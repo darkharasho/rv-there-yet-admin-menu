@@ -89,9 +89,12 @@ if type(register_key) == "function" and type(Key) == "table" and Key.F9 ~= nil t
         print(string.format("[recon] ExecuteInGameThread failed: %s\n", tostring(err3)))
       end
     else
-      -- No ExecuteInGameThread available; run inline rather than skip the
-      -- dump entirely.
-      fire()
+      -- FindAllOf, GetFullName(), and DumpAllObjects() are unsafe to call
+      -- off the game thread. Without ExecuteInGameThread there is no safe
+      -- way to run the dump, so skip it rather than risk crashing the
+      -- game — a recon tool that crashes the session is worse than one
+      -- that logs why it did nothing.
+      print("[recon] missing: ExecuteInGameThread (skipping dump — unsafe to run engine calls off the game thread)\n")
     end
   end)
   if not ok then
@@ -113,8 +116,22 @@ do
   if type(register_hook) == "function" then
     local fires_logged = 0
     local MAX_FIRES_TO_LOG = 5
+    local draw_fns_checked = false
 
     local ok, err = pcall(register_hook, "/Script/Engine.HUD:ReceiveDrawHUD", function(hud, w, h)
+      -- One-shot probe of DrawRect/DrawText callability, on the first
+      -- fire only, so it never repeats alongside the throttled fires.
+      if not draw_fns_checked then
+        draw_fns_checked = true
+        local okp, err_probe = pcall(function()
+          print(string.format("[recon] ReceiveDrawHUD: type(hud.DrawRect) = %s\n", type(hud.DrawRect)))
+          print(string.format("[recon] ReceiveDrawHUD: type(hud.DrawText) = %s\n", type(hud.DrawText)))
+        end)
+        if not okp then
+          print(string.format("[recon] ReceiveDrawHUD: DrawRect/DrawText probe failed: %s\n", tostring(err_probe)))
+        end
+      end
+
       if fires_logged >= MAX_FIRES_TO_LOG then return end
       fires_logged = fires_logged + 1
 

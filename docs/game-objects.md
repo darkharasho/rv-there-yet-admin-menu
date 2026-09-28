@@ -124,6 +124,11 @@ flood `UE4SS.log`).
 **Answer:** **UNVERIFIED — fill from the dump**
 
 **DrawRect / DrawText callable from the hook:** **UNVERIFIED — fill from the dump**
+(Answered by the two `[recon] ReceiveDrawHUD: type(hud.DrawRect) = ...` and
+`[recon] ReceiveDrawHUD: type(hud.DrawText) = ...` lines that
+`tools/dump-game-objects.lua` prints on the hook's first fire only. A
+value of `function` means it is callable; anything else (`nil`, `table`,
+etc.) means it is not.)
 
 **This is the single most important question in this recon.** If
 `ReceiveDrawHUD` never fires, the plan's IMGUI-via-HUD-hook rendering
