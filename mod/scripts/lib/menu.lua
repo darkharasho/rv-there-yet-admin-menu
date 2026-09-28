@@ -21,9 +21,12 @@ function M.new(spec, opts)
   end
   return setmetatable({
     spec = spec,
-    opts = { confirm_destructive = opts.confirm_destructive == true },
+    -- Fails SAFE: only an explicit false disables confirmation, so a
+    -- wiring slip that drops the key still prompts before "Kill Player".
+    opts = { confirm_destructive = opts.confirm_destructive ~= false },
     stack = {},
     pending = nil,
+    message = nil,
     open_flag = false,
   }, Menu)
 end
@@ -31,12 +34,26 @@ end
 function Menu:open()
   self.stack = { { page = self.spec, cursor = 1 } }
   self.pending = nil
+  self.message = nil
   self.open_flag = true
 end
 
 function Menu:close()
   self.open_flag = false
   self.pending = nil
+  self.message = nil
+end
+
+-- One transient line the renderer shows under the rows: "Host only - you
+-- are not the session authority", "player no longer in session", "not
+-- available on this game version". nil clears it; a non-string degrades to
+-- its tostring() rather than erroring inside a HUD hook.
+function Menu:set_message(text)
+  if text == nil then
+    self.message = nil
+  else
+    self.message = tostring(text)
+  end
 end
 
 function Menu:is_open()
@@ -104,6 +121,7 @@ function Menu:input(event)
 
   if event == "back" then
     self.pending = nil
+    self.message = nil
     if #self.stack > 1 then
       table.remove(self.stack)
     else
@@ -125,6 +143,7 @@ function Menu:input(event)
     if item.kind == "submenu" then
       if type(item.target) == "table" then
         table.insert(self.stack, { page = item.target, cursor = 1 })
+        self.message = nil
       end
       return nil
     end
@@ -146,19 +165,31 @@ function Menu:input(event)
 end
 
 -- Everything the renderer needs and nothing more: no ids, no engine types.
+-- A closed menu renders as nothing at all, so a HUD hook that calls view()
+-- every frame cannot leave a ghost menu on screen after close(). Every
+-- table returned here is freshly built, so a renderer that mutates the
+-- view cannot corrupt the state machine.
 function Menu:view()
   local frame = top_frame(self)
-  if not frame then
-    return { title = nil, rows = {}, prompt = nil }
+  if not self.open_flag or not frame then
+    return { title = nil, rows = {}, prompt = nil, message = nil }
   end
   local rows = {}
   for i, item in ipairs(items_of(frame.page)) do
-    rows[i] = { label = item.label, selected = (i == frame.cursor) }
+    rows[i] = {
+      label = item.label,
+      selected = (i == frame.cursor),
+      kind = item.kind,
+      destructive = item.destructive == true,
+      -- Only a toggle has an on/off state to draw.
+      value = (item.kind == "toggle") and item.value or nil,
+    }
   end
   return {
     title = frame.page.title,
     rows = rows,
     prompt = self.pending and self.pending.prompt or nil,
+    message = self.message,
   }
 end
 

@@ -11,17 +11,21 @@ local LABELS = {
   kick = "Kick",
 }
 
+-- Fails loudly on a typo: a silent nil here would leave the cursor on row
+-- 1 and let tests pass for the wrong reason. Test-only code, so assert is
+-- the right tool (the no-error rule covers mod/ and tools/).
 local function index_of(m, id)
   local label = LABELS[id]
+  assert(label, "no label for id: " .. tostring(id))
   for i, row in ipairs(m:view().rows) do
     if row.label == label then return i end
   end
-  return nil
+  error("no visible row labelled " .. tostring(label))
 end
 
 local function select_row(m, id)
   local i = index_of(m, id)
-  if i then m:hover(i) end
+  m:hover(i)
   return i
 end
 
@@ -40,7 +44,7 @@ local spec = {
     { id = "spawn", label = LABELS.spawn, kind = "action" },
     { id = "players", label = LABELS.players, kind = "submenu", target = players_page },
     { id = "kill", label = LABELS.kill, kind = "action", destructive = true },
-    { id = "heal", label = LABELS.heal, kind = "toggle" },
+    { id = "heal", label = LABELS.heal, kind = "toggle", value = true },
   },
 }
 
@@ -145,18 +149,32 @@ describe("menu", function()
     assert.is_nil(m:view().prompt)
   end)
 
-  it("selecting a destructive row fires immediately with default opts", function()
-    local m = menu.new(spec, {}); m:open()
-    select_row(m, "kill")
-    assert.same({ action = "kill", target = nil }, m:input("select"))
-    assert.is_nil(m:view().prompt)
+  it("confirmation defaults ON for omitted, empty and misnamed opts", function()
+    -- Fail-safe: anything that is not an explicit false must still prompt.
+    -- A wiring slip that drops or misspells the key must never turn
+    -- "Kill Player" into a one-click action.
+    -- Array of names, not a keyed table: a nil value in a table
+    -- constructor would silently drop the "omitted opts" case.
+    local cases = { "omitted opts", "empty opts", "misnamed key", "non-table opts" }
+    local opts_for = {
+      ["empty opts"] = {},
+      ["misnamed key"] = { confirmdestructive = false },
+      ["non-table opts"] = 5,
+    }
+    for _, name in ipairs(cases) do
+      local m = menu.new(spec, opts_for[name]); m:open()
+      select_row(m, "kill")
+      assert.is_nil(m:input("select"), name .. " fired without confirming")
+      assert.truthy(m:view().prompt, name .. " showed no prompt")
+      assert.same({ action = "kill", target = nil }, m:input("select"))
+    end
   end)
 
   it("menu.new tolerates a non-table opts argument", function()
     local m = menu.new(spec, 5); m:open()
     assert.is_true(m:is_open())
-    select_row(m, "kill")
-    assert.same({ action = "kill", target = nil }, m:input("select"))
+    select_row(m, "spawn")
+    assert.same({ action = "spawn", target = nil }, m:input("select"))
   end)
 
   it("hover rejects a non-number argument", function()
@@ -176,6 +194,92 @@ describe("menu", function()
     local m = menu.new(spec, {}); m:open()
     select_row(m, "heal")
     assert.same({ action = "heal", target = nil }, m:input("select"))
+  end)
+
+  it("view is empty once the menu is closed, not just before it is opened", function()
+    -- A HUD hook calls view() every frame; a non-empty view after close()
+    -- draws a ghost menu that never goes away.
+    local m = menu.new(spec, {}); m:open()
+    m:close()
+    assert.is_false(m:is_open())
+    assert.same({ title = nil, rows = {}, prompt = nil, message = nil }, m:view())
+  end)
+
+  it("view is empty after back closes the menu at the root", function()
+    local m = menu.new(spec, {}); m:open()
+    m:input("back")
+    assert.is_false(m:is_open())
+    assert.same({}, m:view().rows)
+    assert.is_nil(m:view().title)
+  end)
+
+  it("view rows carry kind, destructive and a toggle's value", function()
+    local m = menu.new(spec, {}); m:open()
+    local rows = m:view().rows
+    local kill = rows[index_of(m, "kill")]
+    assert.equal("action", kill.kind)
+    assert.is_true(kill.destructive)
+
+    local players = rows[index_of(m, "players")]
+    assert.equal("submenu", players.kind)
+    assert.is_false(players.destructive)
+
+    local heal = rows[index_of(m, "heal")]
+    assert.equal("toggle", heal.kind)
+    assert.is_true(heal.value)
+
+    local spawn = rows[index_of(m, "spawn")]
+    assert.equal("action", spawn.kind)
+    assert.is_nil(spawn.value)                   -- only toggles carry a value
+  end)
+
+  it("set_message surfaces a line through view", function()
+    local m = menu.new(spec, {}); m:open()
+    assert.is_nil(m:view().message)
+    m:set_message("Host only - you are not the session authority")
+    assert.equal("Host only - you are not the session authority", m:view().message)
+    m:set_message(nil)
+    assert.is_nil(m:view().message)
+  end)
+
+  it("set_message degrades a non-string instead of erroring", function()
+    local m = menu.new(spec, {}); m:open()
+    m:set_message(42)
+    assert.equal("42", m:view().message)
+  end)
+
+  it("the message clears on close, on open and on a page change", function()
+    local m = menu.new(spec, {}); m:open()
+
+    m:set_message("player no longer in session")
+    m:close()
+    assert.is_nil(m.message)
+
+    m:open()
+    m:set_message("not available on this game version")
+    m:open()
+    assert.is_nil(m:view().message)
+
+    m:set_message("stale")
+    select_row(m, "players"); m:input("select")   -- into the submenu
+    assert.is_nil(m:view().message)
+
+    m:set_message("stale again")
+    m:input("back")                                -- back out of the submenu
+    assert.is_nil(m:view().message)
+  end)
+
+  it("view returns fresh tables a renderer cannot corrupt", function()
+    local m = menu.new(spec, {}); m:open()
+    local first = m:view()
+    assert.are_not.equal(first, m:view())
+    assert.are_not.equal(first.rows[1], m:view().rows[1])
+    first.rows[1].label = "CLOBBERED"
+    first.rows[1].selected = false
+    table.remove(first.rows)
+    assert.equal(LABELS.spawn, m:view().rows[1].label)
+    assert.is_true(m:view().rows[1].selected)
+    assert.equal(#spec.items, #m:view().rows)
   end)
 
   it("entering a submenu resets its cursor to the first row", function()
