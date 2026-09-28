@@ -37,7 +37,7 @@ default and valid values:
 
 | Key | Default | Values |
 |---|---|---|
-| `Hotkey` | `F3` | `F1`-`F12`, `INSERT`, `HOME`, `END`, `DELETE`, `PAGE_UP`, `PAGE_DOWN` |
+| `Hotkey` | `F3` | `F1`-`F12`, `INSERT`, `HOME`, `END`, `DELETE`, `PAGE_UP`, `PAGE_DOWN` (only `F1`-`F12` confirmed so far) |
 | `LogLevel` | `INFO` | `DEBUG`, `INFO`, `WARN`, `ERROR` |
 | `ConfirmDestructive` | `true` | `1`/`true`/`yes`/`on` or `0`/`false`/`no`/`off` |
 | `HealAmount` | `100` | `1`-`1000` |
