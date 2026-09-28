@@ -1,0 +1,10 @@
+{
+    "name": "RVAdminMenu",
+    "author": "darkharasho",
+    "version_number": "1.0.0",
+    "description": "Host-side admin menu: spawn items, revive/kill/heal/teleport players, warp to checkpoints",
+    "website_url": "https://github.com/darkharasho/rv-there-yet-admin-menu",
+    "dependencies": [
+        "Thunderstore-unreal_shimloader-1.1.7"
+    ]
+}
