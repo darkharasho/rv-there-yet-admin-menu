@@ -1,0 +1,13 @@
+describe("toolchain", function()
+  it("runs Lua 5.4", function()
+    assert.equal("Lua 5.4", _VERSION)
+  end)
+end)
+
+describe("package layout", function()
+  it("declares the shimloader dependency", function()
+    local f = assert(io.open("manifest.json", "r"))
+    local body = f:read("a"); f:close()
+    assert.truthy(body:find("Thunderstore%-unreal_shimloader%-1%.1%.7"))
+  end)
+end)

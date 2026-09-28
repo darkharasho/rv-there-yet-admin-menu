@@ -3,7 +3,10 @@ node_modules
 .env.*
 .DS_Store
 dist
+*.zip
 build
 *.log
 .superpowers
 .sai/
+.tooling/
+.superpowers/

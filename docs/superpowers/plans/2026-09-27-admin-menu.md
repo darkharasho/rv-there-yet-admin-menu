@@ -36,6 +36,8 @@ Five things the spec implies but no feature task naturally exercises. Each has i
 
 ### Task 1: Repo skeleton, packaging, and a mod that loads
 
+> **Controller note (pre-flight):** `.gitignore`, `tests/smoke_spec.lua`, `scripts/test.sh` and `scripts/bootstrap-toolchain.sh` already exist on this branch — a working Lua 5.4 + `busted` toolchain was bootstrapped during setup because this machine has no system Lua and no root. **Amend** those files; do not overwrite them. Run tests with `./scripts/test.sh`, and make any `.busted` config you add compatible with that wrapper.
+
 **Files:**
 - Create: `manifest.json`, `icon.png`, `README.md`, `CHANGELOG.md`, `.gitignore`
 - Create: `mod/enabled.txt`, `mod/config.ini`, `mod/scripts/main.lua`
@@ -436,6 +438,8 @@ Every later task talks to the game only through this module. It is the reason th
   - `adapter:in_game_thread(fn)` — routes through `ExecuteInGameThread` when present, else calls directly
   - `adapter:bind_key(key_name, fn) -> boolean`
   - `adapter:on_hook(signature, fn) -> boolean`
+  - `adapter:mouse_state() -> { x = number, y = number, down = boolean }|nil` — the local player's cursor position and left-button state, read from the PlayerController functions named in the recon doc. Returns `nil` (never a partial table) when the controller or any function is unavailable, so callers have exactly one failure case to handle.
+  - `adapter:set_cursor_visible(visible) -> boolean|nil` — writes `bShowMouseCursor` and returns the **previous** value, so the caller can restore it; `nil` if the write failed.
 - `tests/support/fake_ue.lua` implements the same surface over plain Lua tables, with `fake.objects[class_name] = { ... }`, a `fake.calls` log, and `fake.fail_on = { ["set:Health"] = true }` to simulate rejected writes.
 
 - [ ] **Step 1: Write the failing test**
@@ -744,14 +748,14 @@ Expected: PASS, 5 successes.
 Use the exact HUD class path from the recon doc. Everything inside the hook is `pcall`-wrapped: a throwing draw hook fires every frame and would flood the log and stutter the game, so on the first failure log one ERROR, set a `render_disabled` flag, and stop drawing.
 
 ```lua
-ue.register_hook(HUD_DRAW_PATH, function(hud)
+adapter:on_hook(HUD_DRAW_PATH, function(hud)
   if not m:is_open() or render_disabled then return end
   local ok, err = pcall(function()
     local layout = r:layout(m:view())
     r:draw(hud:get(), layout)
   end)
   if not ok then
-    logger.error("draw failed, disabling overlay: " .. tostring(err))
+    logger:error("draw failed, disabling overlay: " .. tostring(err))
     render_disabled = true
   end
 end)
@@ -759,19 +763,23 @@ end)
 
 - [ ] **Step 6: Wire mouse input**
 
-In the same hook, after drawing: read the cursor with the PlayerController functions named in the recon doc, call `r:hit`, and feed the result to the menu.
+In the same hook, after drawing: read the cursor via `adapter:mouse_state()`, call `r:hit`, and feed the result to the menu. Track the previous button state so a held button fires once, not every frame — `clicked` is "down now, up last frame".
 
 ```lua
-local i = r:hit(layout, mouse_x, mouse_y)
+local ms = adapter:mouse_state()
+if not ms then return end          -- no cursor data: keyboard still works
+local clicked = ms.down and not was_down
+was_down = ms.down
+local i = r:hit(layout, ms.x, ms.y)
 if i then m:hover(i) end
-if i and ue.was_left_click() then m:input("select") end
+if i and clicked then m:input("select") end
 ```
 
 Consume clicks only when `i` is non-nil — a click outside the panel belongs to the game, not the mod.
 
 - [ ] **Step 7: Show and restore the cursor around open/close**
 
-On open, record the controller's current `bShowMouseCursor` and set it true. On close, write the recorded value back — never an unconditional `false`. Also restore it if the menu is force-closed by a map change, so a level transition cannot strand the cursor on.
+On open, call `adapter:set_cursor_visible(true)` and keep its return value — the previous state. On close, write that recorded value back with `adapter:set_cursor_visible(prev)` — never an unconditional `false`. Also restore it if the menu is force-closed by a map change, so a level transition cannot strand the cursor on.
 
 - [ ] **Step 8: Bind the hotkey and the keyboard fallback in `main.lua`**
 
