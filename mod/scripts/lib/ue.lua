@@ -58,6 +58,10 @@ function Adapter:find_first(class_name)
 end
 
 function Adapter:get(obj, prop)
+  -- A nil object here is a caller programming error, not malformed user
+  -- input, so this degrades silently (no warn) rather than spamming the
+  -- log from ordinary guard code. Same reasoning applies to the nil-object
+  -- guards in set/call/class_of below.
   if obj == nil then return nil, "cannot get property of a nil object" end
   local ok, value = pcall(function() return obj[prop] end)
   if not ok then

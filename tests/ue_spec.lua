@@ -198,6 +198,20 @@ describe("ue adapter", function()
     assert.is_true(a:bind_key("F3", function() end))
   end)
 
+  it("bind_key resolves the key name through the Key table before registering", function()
+    _G.Key = { F3 = 42 }
+    local recorded = {}
+    _G.RegisterKeyBind = function(key, fn)
+      recorded.key = key
+      recorded.fn = fn
+    end
+    local callback = function() end
+    local a = ue.new(quiet({}))
+    assert.is_true(a:bind_key("F3", callback))
+    assert.equal(42, recorded.key)
+    assert.equal(callback, recorded.fn)
+  end)
+
   it("on_hook returns false when RegisterHook is absent", function()
     local a = ue.new(quiet({}))
     assert.is_false(a:on_hook("/Script/Engine.HUD:ReceiveDrawHUD", function() end))
@@ -235,6 +249,46 @@ describe("ue adapter", function()
     local pc = {
       GetMousePosition = function() error("no cursor") end,
       IsInputKeyDown = function() return false end,
+    }
+    _G.FindFirstOf = function() return pc end
+    local a = ue.new(quiet({}))
+    assert.is_nil(a:mouse_state())
+  end)
+
+  it("mouse_state is nil, not partial, when the down-button function is missing", function()
+    local pc = {
+      GetMousePosition = function() return 12, 34 end,
+      -- IsInputKeyDown intentionally absent
+    }
+    _G.FindFirstOf = function() return pc end
+    local a = ue.new(quiet({}))
+    assert.is_nil(a:mouse_state())
+  end)
+
+  it("mouse_state is nil, not partial, when the down-button field is not a function", function()
+    local pc = {
+      GetMousePosition = function() return 12, 34 end,
+      IsInputKeyDown = "not a function",
+    }
+    _G.FindFirstOf = function() return pc end
+    local a = ue.new(quiet({}))
+    assert.is_nil(a:mouse_state())
+  end)
+
+  it("mouse_state is nil, not partial, when the down-button call errors", function()
+    local pc = {
+      GetMousePosition = function() return 12, 34 end,
+      IsInputKeyDown = function() error("input system unavailable") end,
+    }
+    _G.FindFirstOf = function() return pc end
+    local a = ue.new(quiet({}))
+    assert.is_nil(a:mouse_state())
+  end)
+
+  it("mouse_state is nil, not partial, when the down-button call returns a non-boolean", function()
+    local pc = {
+      GetMousePosition = function() return 12, 34 end,
+      IsInputKeyDown = function() return "yes" end,
     }
     _G.FindFirstOf = function() return pc end
     local a = ue.new(quiet({}))
