@@ -299,6 +299,19 @@ describe("ue adapter", function()
     assert.is_nil(a:mouse_state())
   end)
 
+  -- mouse_state is polled by the HUD hook every frame, so a permanently
+  -- failing lookup must not write a warning per frame into UE4SS.log.
+  it("mouse_state stays silent when the controller lookup itself throws", function()
+    _G.FindFirstOf = function() error("engine exploded") end
+    local lines = {}
+    local a = ue.new(quiet(lines))
+    assert.is_nil(a:mouse_state())
+    assert.equal(0, #lines)
+    -- find_first, used outside the per-frame path, still warns.
+    assert.is_nil(a:find_first("PlayerController"))
+    assert.truthy(table.concat(lines):find("WARN"))
+  end)
+
   it("mouse_state is nil when the controller is missing the mouse position function", function()
     _G.FindFirstOf = function() return {} end
     local a = ue.new(quiet({}))

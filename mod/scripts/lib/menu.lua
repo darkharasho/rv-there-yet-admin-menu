@@ -181,9 +181,13 @@ function Menu:view()
       selected = (i == frame.cursor),
       kind = item.kind,
       destructive = item.destructive == true,
-      -- Only a toggle has an on/off state to draw.
-      value = (item.kind == "toggle") and item.value or nil,
     }
+    -- Only a toggle has an on/off state to draw. Assigned in a branch rather
+    -- than with `and/or`, which would turn a legitimately-off toggle into nil
+    -- and make it indistinguishable from a row that has no value at all.
+    if item.kind == "toggle" then
+      rows[i].value = item.value
+    end
   end
   return {
     title = frame.page.title,

@@ -8,6 +8,7 @@ local LABELS = {
   players = "Players",
   kill = "Kill Player",
   heal = "Heal All",
+  godmode = "God Mode",
   kick = "Kick",
 }
 
@@ -45,6 +46,7 @@ local spec = {
     { id = "players", label = LABELS.players, kind = "submenu", target = players_page },
     { id = "kill", label = LABELS.kill, kind = "action", destructive = true },
     { id = "heal", label = LABELS.heal, kind = "toggle", value = true },
+    { id = "godmode", label = LABELS.godmode, kind = "toggle", value = false },
   },
 }
 
@@ -227,6 +229,12 @@ describe("menu", function()
     local heal = rows[index_of(m, "heal")]
     assert.equal("toggle", heal.kind)
     assert.is_true(heal.value)
+
+    -- An off toggle must report false, not nil: a renderer drawing [x]/[ ]
+    -- has to tell "off" apart from "this row has no toggle state at all".
+    local god = rows[index_of(m, "godmode")]
+    assert.equal("toggle", god.kind)
+    assert.is_false(god.value)
 
     local spawn = rows[index_of(m, "spawn")]
     assert.equal("action", spawn.kind)

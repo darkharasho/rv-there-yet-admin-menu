@@ -46,15 +46,23 @@ function Adapter:find_all(class_name)
   return list
 end
 
-function Adapter:find_first(class_name)
+-- `quiet` suppresses the warning for callers polled every frame; the return
+-- shape is identical either way.
+local function find_first_impl(self, class_name, quiet)
   local fn = get_global("FindFirstOf")
   if not fn then return nil end
   local ok, obj = pcall(fn, class_name)
   if not ok then
-    warn(self, string.format("FindFirstOf(%s) failed: %s", tostring(class_name), tostring(obj)))
+    if not quiet then
+      warn(self, string.format("FindFirstOf(%s) failed: %s", tostring(class_name), tostring(obj)))
+    end
     return nil, tostring(obj)
   end
   return obj
+end
+
+function Adapter:find_first(class_name)
+  return find_first_impl(self, class_name, false)
 end
 
 function Adapter:get(obj, prop)
@@ -212,7 +220,9 @@ end
 -- function it needs are present and well-behaved. Goes through call_quiet
 -- rather than call because a HUD hook polls this every frame.
 function Adapter:mouse_state()
-  local pc = self:find_first("PlayerController")
+  -- Quiet lookup too: a throwing FindFirstOf would otherwise warn every frame,
+  -- which is the exact log flood call_quiet exists to avoid.
+  local pc = find_first_impl(self, "PlayerController", true)
   if pc == nil then return nil end
 
   local ok_pos, x, y = self:call_quiet(pc, ASSUMED.mouse_position_fn)
