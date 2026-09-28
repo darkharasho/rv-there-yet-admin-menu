@@ -12,6 +12,12 @@ describe("config", function()
     assert.equal("50", t.healamount)
   end)
 
+  it("skips section headers", function()
+    local t = config.parse_ini("[General]\nHotkey = F4\n[Other]\nHealAmount=50\n")
+    assert.equal("F4", t.hotkey)
+    assert.equal("50", t.healamount)
+  end)
+
   it("uses defaults when the ini is empty", function()
     local cfg = config.resolve({}, quiet({}))
     assert.equal("F3", cfg.hotkey)
@@ -39,5 +45,36 @@ describe("config", function()
     for _, v in ipairs({ "0", "false", "no", "off" }) do
       assert.is_false(config.resolve({ confirmdestructive = v }, quiet({})).confirm_destructive)
     end
+    for _, v in ipairs({ "1", "yes", "on" }) do
+      assert.is_true(config.resolve({ confirmdestructive = v }, quiet({})).confirm_destructive)
+    end
+  end)
+
+  it("falls back to the default heal amount and warns on a non-numeric value", function()
+    local lines = {}
+    local cfg = config.resolve({ healamount = "fifty" }, quiet(lines))
+    assert.equal(100, cfg.heal_amount)
+    local joined = table.concat(lines)
+    assert.truthy(joined:find("WARN"))
+    assert.truthy(joined:find("fifty"))
+    assert.truthy(joined:find("100"))
+  end)
+
+  it("falls back to the default confirm_destructive and warns on a garbage value", function()
+    local lines = {}
+    local cfg = config.resolve({ confirmdestructive = "maybe" }, quiet(lines))
+    assert.is_true(cfg.confirm_destructive)
+    local joined = table.concat(lines)
+    assert.truthy(joined:find("WARN"))
+    assert.truthy(joined:find("maybe"))
+  end)
+
+  it("warns on an unrecognized log level but still passes it through for log.new to default", function()
+    local lines = {}
+    local cfg = config.resolve({ loglevel = "BANANA" }, quiet(lines))
+    assert.equal("BANANA", cfg.log_level)
+    local joined = table.concat(lines)
+    assert.truthy(joined:find("WARN"))
+    assert.truthy(joined:find("BANANA"))
   end)
 end)

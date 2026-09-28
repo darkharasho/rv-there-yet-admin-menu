@@ -17,6 +17,7 @@ local DEFAULTS = {
 
 local TRUE_VALUES = { ["1"] = true, ["true"] = true, ["yes"] = true, ["on"] = true }
 local FALSE_VALUES = { ["0"] = true, ["false"] = true, ["no"] = true, ["off"] = true }
+local LOG_LEVEL_NAMES = { DEBUG = true, INFO = true, WARN = true, ERROR = true }
 
 local function trim(s)
   return s:match("^%s*(.-)%s*$")
@@ -51,15 +52,21 @@ local function resolve_hotkey(ini, logger)
   return DEFAULTS.hotkey, false
 end
 
-local function resolve_log_level(ini)
+local function resolve_log_level(ini, logger)
   local raw = ini.loglevel
   if raw == nil then
     return DEFAULTS.log_level
   end
-  return tostring(raw):upper()
+  local upper = tostring(raw):upper()
+  if not LOG_LEVEL_NAMES[upper] then
+    logger:warn(string.format(
+      "Invalid LogLevel '%s' in config.ini; falling back to default '%s'",
+      tostring(raw), DEFAULTS.log_level))
+  end
+  return upper
 end
 
-local function resolve_bool(ini, key, default)
+local function resolve_bool(ini, key, ini_name, default, logger)
   local raw = ini[key]
   if raw == nil then
     return default
@@ -70,16 +77,22 @@ local function resolve_bool(ini, key, default)
   elseif FALSE_VALUES[lowered] then
     return false
   end
+  logger:warn(string.format(
+    "Invalid %s '%s' in config.ini; falling back to default '%s'",
+    ini_name, tostring(raw), tostring(default)))
   return default
 end
 
-local function resolve_heal_amount(ini)
+local function resolve_heal_amount(ini, logger)
   local raw = ini.healamount
   if raw == nil then
     return DEFAULTS.heal_amount
   end
   local n = tonumber(raw)
   if n == nil then
+    logger:warn(string.format(
+      "Invalid HealAmount '%s' in config.ini; falling back to default '%s'",
+      tostring(raw), tostring(DEFAULTS.heal_amount)))
     return DEFAULTS.heal_amount
   end
   n = math.floor(n)
@@ -94,9 +107,9 @@ function M.resolve(ini, logger)
   return {
     hotkey = hotkey,
     hotkey_valid = hotkey_valid,
-    log_level = resolve_log_level(ini),
-    confirm_destructive = resolve_bool(ini, "confirmdestructive", DEFAULTS.confirm_destructive),
-    heal_amount = resolve_heal_amount(ini),
+    log_level = resolve_log_level(ini, logger),
+    confirm_destructive = resolve_bool(ini, "confirmdestructive", "ConfirmDestructive", DEFAULTS.confirm_destructive, logger),
+    heal_amount = resolve_heal_amount(ini, logger),
   }
 end
 

@@ -11,7 +11,7 @@ end
 local function emit(self, level, msg)
   if LEVELS[level] < self.level then return end
   local ok, stamp = pcall(os.date, "%H:%M:%S")
-  self.sink(string.format("[%s] [%s] [%s] %s\n",
+  self.sink(string.format("[%s] [%s] [%s] %s",
     ok and stamp or "--:--:--", self.name, level, tostring(msg)))
 end
 
