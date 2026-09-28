@@ -1,0 +1,5 @@
+describe("toolchain", function()
+  it("runs Lua 5.4", function()
+    assert.equal("Lua 5.4", _VERSION)
+  end)
+end)

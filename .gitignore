@@ -7,3 +7,5 @@ build
 *.log
 .superpowers
 .sai/
+.tooling/
+.superpowers/
