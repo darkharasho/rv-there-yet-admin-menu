@@ -117,28 +117,86 @@ describe("ue adapter", function()
     assert.truthy(err)
   end)
 
-  it("calls a method on the object and returns its result", function()
+  it("calls a method on the object and returns ok plus its result", function()
     local obj = { Ping = function(self, n) return n + 1 end }
     local a = ue.new(quiet({}))
-    local v, err = a:call(obj, "Ping", 41)
+    local ok, v = a:call(obj, "Ping", 41)
+    assert.is_true(ok)
     assert.equal(42, v)
-    assert.is_nil(err)
+  end)
+
+  it("call() carries EVERY return value, not just the first", function()
+    -- The teleport case: K2_GetActorLocation returns x, y, z. A call seam
+    -- that drops y and z writes garbage into the game.
+    local obj = { GetLocation = function() return 1, 2, 3 end }
+    local a = ue.new(quiet({}))
+    local ok, x, y, z = a:call(obj, "GetLocation")
+    assert.is_true(ok)
+    assert.same({ 1, 2, 3 }, { x, y, z })
+  end)
+
+  it("call() carries a nil in the middle of the return values", function()
+    local obj = { Tri = function() return 1, nil, 3 end }
+    local a = ue.new(quiet({}))
+    local res = table.pack(a:call(obj, "Tri"))
+    assert.equal(4, res.n)
+    assert.is_true(res[1])
+    assert.is_nil(res[3])
+    assert.equal(3, res[4])
+  end)
+
+  it("call() passes every argument through", function()
+    local obj = { Sum = function(self, a, b, c) return (a or 0) + (b or 0) + (c or 0) end }
+    local a = ue.new(quiet({}))
+    local ok, sum = a:call(obj, "Sum", 1, 2, 3)
+    assert.is_true(ok)
+    assert.equal(6, sum)
   end)
 
   it("never propagates an error from call()", function()
     local obj = { Boom = function() error("kaboom") end }
     local a = ue.new(quiet({}))
-    local v, err = a:call(obj, "Boom")
-    assert.is_nil(v)
+    local ok, err = a:call(obj, "Boom")
+    assert.is_false(ok)
     assert.truthy(err)
   end)
 
   it("reports an error from call() when the function does not exist", function()
     local obj = {}
     local a = ue.new(quiet({}))
-    local v, err = a:call(obj, "NoSuchFn")
-    assert.is_nil(v)
+    local ok, err = a:call(obj, "NoSuchFn")
+    assert.is_false(ok)
+    assert.truthy(err:find("no such function"))
+  end)
+
+  it("reports an error from call() on a nil object", function()
+    local a = ue.new(quiet({}))
+    local ok, err = a:call(nil, "Anything")
+    assert.is_false(ok)
     assert.truthy(err)
+  end)
+
+  it("reports an error from call() when looking up the function throws", function()
+    local obj = setmetatable({}, { __index = function() error("lookup exploded") end })
+    local a = ue.new(quiet({}))
+    local ok, err = a:call(obj, "Whatever")
+    assert.is_false(ok)
+    assert.truthy(err)
+  end)
+
+  it("call() warns on failure and call_quiet() does not", function()
+    local obj = { Boom = function() error("kaboom") end }
+    local loud, silent = {}, {}
+    assert.is_false(ue.new(quiet(loud)):call(obj, "Boom"))
+    assert.is_false(ue.new(quiet(silent)):call_quiet(obj, "Boom"))
+    assert.truthy(table.concat(loud):find("WARN"))
+    assert.equal(0, #silent)
+  end)
+
+  it("call_quiet() carries the same values as call()", function()
+    local obj = { GetLocation = function() return 1, 2, 3 end }
+    local a = ue.new(quiet({}))
+    assert.same({ true, 1, 2, 3 }, { a:call_quiet(obj, "GetLocation") })
   end)
 
   it("is_valid is false for nil and true for a plain object without an engine IsValid global", function()
@@ -210,6 +268,19 @@ describe("ue adapter", function()
     assert.is_true(a:bind_key("F3", callback))
     assert.equal(42, recorded.key)
     assert.equal(callback, recorded.fn)
+  end)
+
+  it("bind_key fails loudly when the Key table lacks the name", function()
+    _G.Key = { F3 = 42 }
+    local registered = false
+    _G.RegisterKeyBind = function() registered = true end
+    local lines = {}
+    local a = ue.new(quiet(lines))
+    assert.is_false(a:bind_key("PAGE_UP", function() end))
+    assert.is_false(registered)                 -- never hands a raw string to UE4SS
+    local joined = table.concat(lines)
+    assert.truthy(joined:find("WARN"))
+    assert.truthy(joined:find("PAGE_UP"))
   end)
 
   it("on_hook returns false when RegisterHook is absent", function()
@@ -361,5 +432,90 @@ describe("fake_ue", function()
     local prev = fake:set_cursor_visible(false)
     assert.is_true(prev)
     assert.is_false(fake.cursor_visible)
+  end)
+
+  it("call() returns ok plus every return value, like the real adapter", function()
+    local fake = fake_ue.new()
+    local obj = { GetLocation = function() return 1, 2, 3 end }
+    assert.same({ true, 1, 2, 3 }, { fake:call(obj, "GetLocation") })
+    assert.same({ true, 1, 2, 3 }, { fake:call_quiet(obj, "GetLocation") })
+  end)
+
+  it("call() failure shapes match the real adapter's", function()
+    local fake = fake_ue.new()
+    local real = ue.new(quiet({}))
+
+    local ok1, err1 = fake:call(nil, "Anything")
+    local rok1, rerr1 = real:call(nil, "Anything")
+    assert.is_false(ok1); assert.is_false(rok1)
+    assert.equal(rerr1, err1)
+
+    local ok2, err2 = fake:call({}, "NoSuchFn")
+    local rok2, rerr2 = real:call({}, "NoSuchFn")
+    assert.is_false(ok2); assert.is_false(rok2)
+    assert.equal(rerr2, err2)
+
+    local boom = { Boom = function() error("kaboom") end }
+    local ok3, err3 = fake:call(boom, "Boom")
+    local rok3 = real:call(boom, "Boom")
+    assert.is_false(ok3); assert.is_false(rok3)
+    assert.truthy(err3:find("kaboom"))
+
+    fake.fail_on["call:Kill"] = true
+    local ok4, err4 = fake:call({ Kill = function() end }, "Kill")
+    assert.is_false(ok4)
+    assert.truthy(err4)
+  end)
+
+  it("invalid[obj] reproduces the real adapter's destroyed-object shape", function()
+    local fake = fake_ue.new()
+    local pawn = { name = "pawn" }
+    assert.is_true(fake:is_valid(pawn))
+    fake.invalid[pawn] = true
+    assert.is_false(fake:is_valid(pawn))
+    assert.is_false(fake:is_valid(nil))
+
+    -- Real adapter, same shape: IsValid present and returning false.
+    _G.IsValid = function() return false end
+    local real = ue.new(quiet({}))
+    assert.is_false(real:is_valid(pawn))
+    _G.IsValid = nil
+  end)
+
+  it("mouse = nil reproduces the real adapter's no-mouse-plumbing nil", function()
+    local fake = fake_ue.new()
+    fake.mouse = nil
+    assert.is_nil(fake:mouse_state())
+    assert.is_nil(ue.new(quiet({})):mouse_state())   -- no FindFirstOf global
+  end)
+
+  it("fail_on set_cursor_visible reproduces the real adapter's nil", function()
+    local fake = fake_ue.new()
+    fake.fail_on["set_cursor_visible"] = true
+    assert.is_nil(fake:set_cursor_visible(false))
+    assert.is_true(fake.cursor_visible)             -- the write did not happen
+
+    local pc = setmetatable({}, {
+      __index = function() return false end,
+      __newindex = function() error("locked") end,
+    })
+    _G.FindFirstOf = function() return pc end
+    assert.is_nil(ue.new(quiet({})):set_cursor_visible(true))
+    _G.FindFirstOf = nil
+  end)
+
+  it("fail_on find_first reproduces the real adapter's nil, err pair", function()
+    local fake = fake_ue.new()
+    fake.objects["Pawn"] = { { name = "pawn" } }
+    fake.fail_on["find_first:Pawn"] = true
+    local obj, err = fake:find_first("Pawn")
+    assert.is_nil(obj)
+    assert.truthy(err)
+
+    _G.FindFirstOf = function() error("boom") end
+    local robj, rerr = ue.new(quiet({})):find_first("Pawn")
+    assert.is_nil(robj)
+    assert.truthy(rerr)
+    _G.FindFirstOf = nil
   end)
 end)

@@ -91,26 +91,46 @@ function Adapter:set(obj, prop, value)
   return true, nil
 end
 
-function Adapter:call(obj, fn_name, ...)
-  if obj == nil then return nil, "cannot call a method on a nil object" end
+-- CALL CONTRACT (implemented identically in tests/support/fake_ue.lua):
+--
+--   local ok, a, b, c = adapter:call(obj, "Fn", arg1)
+--
+--   success -> true, <EVERY value the engine function returned>
+--   failure -> false, <error message string>
+--
+-- ALWAYS branch on the first value. `local v, err = adapter:call(...)` is
+-- WRONG under this contract: it reads the ok flag as the value and the
+-- function's first real return value as an error. Carrying all returns is
+-- what makes multi-value engine functions (K2_GetActorLocation -> x, y, z)
+-- usable through this seam at all.
+local function invoke(self, obj, fn_name, ...)
+  if obj == nil then return false, "cannot call a method on a nil object" end
   local args = { ... }
   local n = select("#", ...)
   local ok_fn, fn = pcall(function() return obj[fn_name] end)
-  if not ok_fn then
-    warn(self, string.format("call(%s) failed to look up function: %s", tostring(fn_name), tostring(fn)))
-    return nil, tostring(fn)
-  end
+  if not ok_fn then return false, tostring(fn) end
   if type(fn) ~= "function" then
-    local msg = string.format("no such function: %s", tostring(fn_name))
-    warn(self, msg)
-    return nil, msg
+    return false, string.format("no such function: %s", tostring(fn_name))
   end
-  local ok, result = pcall(fn, obj, table.unpack(args, 1, n))
-  if not ok then
-    warn(self, string.format("call(%s) failed: %s", tostring(fn_name), tostring(result)))
-    return nil, tostring(result)
+  local res = table.pack(pcall(fn, obj, table.unpack(args, 1, n)))
+  if not res[1] then return false, tostring(res[2]) end
+  -- res[1] is pcall's true, which is also the contract's ok flag.
+  return table.unpack(res, 1, res.n)
+end
+
+function Adapter:call(obj, fn_name, ...)
+  local res = table.pack(invoke(self, obj, fn_name, ...))
+  if not res[1] then
+    warn(self, string.format("call(%s) failed: %s", tostring(fn_name), tostring(res[2])))
   end
-  return result, nil
+  return table.unpack(res, 1, res.n)
+end
+
+-- Same contract as call(), but silent. For per-frame callers only: a
+-- permanent failure (a renamed engine function) would otherwise write one
+-- warning to UE4SS.log every single frame and grow the log without bound.
+function Adapter:call_quiet(obj, fn_name, ...)
+  return invoke(self, obj, fn_name, ...)
 end
 
 function Adapter:is_valid(obj)
@@ -155,7 +175,20 @@ function Adapter:bind_key(key_name, fn)
   local reg = get_global("RegisterKeyBind")
   if not reg or type(fn) ~= "function" then return false end
   local keys = rawget(_G, "Key")
-  local key = (type(keys) == "table" and keys[key_name]) or key_name
+  local key = key_name
+  if type(keys) == "table" then
+    -- When UE4SS's Key table exists it is authoritative. Passing an
+    -- unknown name through as a raw string registers a bind that silently
+    -- never fires, so fail loudly instead and name the key.
+    -- Spellings are UNVERIFIED: docs/game-objects.md question 10.
+    if keys[key_name] == nil then
+      warn(self, string.format(
+        "bind_key(%s) failed: UE4SS's Key table has no such key name; the hotkey is not bound",
+        tostring(key_name)))
+      return false
+    end
+    key = keys[key_name]
+  end
   local ok, err = pcall(reg, key, fn)
   if not ok then
     warn(self, string.format("bind_key(%s) failed: %s", tostring(key_name), tostring(err)))
@@ -176,19 +209,16 @@ function Adapter:on_hook(signature, fn)
 end
 
 -- Returns nil (never a partial table) unless the controller and every
--- function it needs are present and well-behaved.
+-- function it needs are present and well-behaved. Goes through call_quiet
+-- rather than call because a HUD hook polls this every frame.
 function Adapter:mouse_state()
   local pc = self:find_first("PlayerController")
   if pc == nil then return nil end
 
-  local ok_pos_fn, pos_fn = pcall(function() return pc[ASSUMED.mouse_position_fn] end)
-  if not ok_pos_fn or type(pos_fn) ~= "function" then return nil end
-  local ok_pos, x, y = pcall(pos_fn, pc)
+  local ok_pos, x, y = self:call_quiet(pc, ASSUMED.mouse_position_fn)
   if not ok_pos or type(x) ~= "number" or type(y) ~= "number" then return nil end
 
-  local ok_down_fn, down_fn = pcall(function() return pc[ASSUMED.mouse_down_fn] end)
-  if not ok_down_fn or type(down_fn) ~= "function" then return nil end
-  local ok_down, down = pcall(down_fn, pc, ASSUMED.left_mouse_key)
+  local ok_down, down = self:call_quiet(pc, ASSUMED.mouse_down_fn, ASSUMED.left_mouse_key)
   if not ok_down or type(down) ~= "boolean" then return nil end
 
   return { x = x, y = y, down = down }
