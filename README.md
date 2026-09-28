@@ -32,9 +32,18 @@ select it.
 
 ## Configuration
 
-See `config.ini` in the mod's folder. Today it ships a single `Hotkey` key (default
-`F3`); more settings will be documented there, inline with their defaults and valid
-ranges, as they are added.
+See `config.ini` in the mod's folder. Every key is documented inline there with its
+default and valid values:
+
+| Key | Default | Values |
+|---|---|---|
+| `Hotkey` | `F3` | `F1`-`F12`, `INSERT`, `HOME`, `END`, `DELETE`, `PAGE_UP`, `PAGE_DOWN` |
+| `LogLevel` | `INFO` | `DEBUG`, `INFO`, `WARN`, `ERROR` |
+| `ConfirmDestructive` | `true` | `1`/`true`/`yes`/`on` or `0`/`false`/`no`/`off` |
+| `HealAmount` | `100` | `1`-`1000` |
+
+An unrecognized value falls back to the default and logs a warning; the mod never
+fails to load because of a bad config line.
 
 ## Status
 
