@@ -1,5 +1,11 @@
 local M = {}
 
+-- UNVERIFIED: the non-function key spellings below are guesses. UE4SS's
+-- own `Key` table is the authority and cannot be read from this dev box --
+-- see docs/game-objects.md question 10, which asks the recon to dump it
+-- and confirm these exact spellings. ue.lua:bind_key refuses to bind a
+-- name the Key table does not have, so a wrong spelling here surfaces as
+-- a warning rather than a hotkey that silently never fires.
 M.KEY_NAMES = {}
 for i = 1, 12 do
   M.KEY_NAMES["F" .. i] = true
@@ -62,6 +68,7 @@ local function resolve_log_level(ini, logger)
     logger:warn(string.format(
       "Invalid LogLevel '%s' in config.ini; falling back to default '%s'",
       tostring(raw), DEFAULTS.log_level))
+    return DEFAULTS.log_level
   end
   return upper
 end
@@ -101,8 +108,22 @@ local function resolve_heal_amount(ini, logger)
   return n
 end
 
+-- resolve's contract is to produce a fully validated cfg: every field is
+-- a value the rest of the mod can use as-is, never a passed-through bad
+-- one. A missing logger degrades to a no-op rather than erroring -- this
+-- runs during mod load inside someone's live session.
+local NULL_LOGGER = {
+  debug = function() end,
+  info = function() end,
+  warn = function() end,
+  error = function() end,
+}
+
 function M.resolve(ini, logger)
   ini = ini or {}
+  if type(logger) ~= "table" or type(logger.warn) ~= "function" then
+    logger = NULL_LOGGER
+  end
   local hotkey, hotkey_valid = resolve_hotkey(ini, logger)
   return {
     hotkey = hotkey,

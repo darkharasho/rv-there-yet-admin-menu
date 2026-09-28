@@ -173,6 +173,41 @@ correction to take effect.
 on unverified guesses and may silently fail to move the cursor, detect
 clicks, or restore the player's cursor state after closing the menu.
 
+## 10. UE4SS `Key` table names for the configurable hotkey
+
+**Question:** Dump UE4SS's global `Key` table and record the exact spelling
+of every key name the mod advertises as a valid `Hotkey` value:
+`F1`-`F12`, `INSERT`, `HOME`, `END`, `DELETE`, `PAGE_UP`, `PAGE_DOWN`.
+For each one, record whether the name exists in the table verbatim and, if
+not, what the actual spelling is (abbreviated forms such as `INS`, `DEL`,
+`PAGEUP`, `PAGE_UP`, `PRIOR`/`NEXT` are all plausible and only the dump can
+settle it).
+
+**Grep terms:** `[recon] Key name:` in `UE4SS.log` — the sorted list that
+`tools/dump-game-objects.lua` prints for every name in the `Key` table on
+each F9 dump.
+
+**Answer:** **UNVERIFIED — fill from the dump**
+
+**Names confirmed present verbatim:** **UNVERIFIED — fill from the dump**
+
+**Names that differ, with their actual spelling:** **UNVERIFIED — fill from the dump**
+
+**Cross-reference:** `mod/scripts/lib/config.lua`'s `M.KEY_NAMES` is the
+list the mod accepts from `config.ini`, and `mod/config.ini` and
+`README.md` document those same names to the user as supported. The
+function-key names (`F1`-`F12`) are near-certain; the six non-function
+names are guesses. `mod/scripts/lib/ue.lua`'s `bind_key` refuses to
+register a name that UE4SS's `Key` table does not contain and warns
+instead, so a wrong spelling here is a visible warning rather than a
+hotkey that silently never fires — but the user still cannot bind that
+key until this section is answered. Do not guess at corrections; copy the
+spellings from the dump.
+
+**If unanswered / wrong:** A user who sets `Hotkey = DELETE` (a value
+`config.ini` tells them is valid) gets a refused binding and a warning in
+`UE4SS.log`, and has no working way to open the menu on that key.
+
 ## How to run this recon
 
 1. Install `tools/dump-game-objects.lua` as its own UE4SS mod, separate

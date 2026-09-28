@@ -69,12 +69,36 @@ describe("config", function()
     assert.truthy(joined:find("maybe"))
   end)
 
-  it("warns on an unrecognized log level but still passes it through for log.new to default", function()
+  it("falls back to the default log level and warns on an unrecognized name", function()
+    -- resolve() must return a validated cfg: a startup banner printing
+    -- cfg.log_level must not tell the user BANANA while running at INFO.
     local lines = {}
     local cfg = config.resolve({ loglevel = "BANANA" }, quiet(lines))
-    assert.equal("BANANA", cfg.log_level)
+    assert.equal("INFO", cfg.log_level)
     local joined = table.concat(lines)
     assert.truthy(joined:find("WARN"))
     assert.truthy(joined:find("BANANA"))
+  end)
+
+  it("accepts a valid log level in any case", function()
+    assert.equal("DEBUG", config.resolve({ loglevel = "debug" }, quiet({})).log_level)
+  end)
+
+  it("resolves without a logger instead of erroring", function()
+    -- The only uncaught error that was reachable under mod/: every
+    -- resolver indexes the logger to warn.
+    local cfg = config.resolve({
+      hotkey = "F27", loglevel = "BANANA",
+      confirmdestructive = "maybe", healamount = "fifty",
+    })
+    assert.equal("F3", cfg.hotkey)
+    assert.is_false(cfg.hotkey_valid)
+    assert.equal("INFO", cfg.log_level)
+    assert.is_true(cfg.confirm_destructive)
+    assert.equal(100, cfg.heal_amount)
+  end)
+
+  it("tolerates a logger that is not a logger", function()
+    assert.equal("F3", config.resolve({ hotkey = "F27" }, "not a logger").hotkey)
   end)
 end)

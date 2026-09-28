@@ -11,7 +11,12 @@ end
 local function emit(self, level, msg)
   if LEVELS[level] < self.level then return end
   local ok, stamp = pcall(os.date, "%H:%M:%S")
-  self.sink(string.format("[%s] [%s] [%s] %s",
+  -- The default sink is UE4SS's overridden print, which can throw once
+  -- the log handle is torn down. An unguarded throw here would escape
+  -- through ue.lua's warn() -- called AFTER the adapter's own pcall has
+  -- returned -- into a HUD hook or key-bind callback on the game thread.
+  -- A logger is the last module allowed to crash the session.
+  pcall(self.sink, string.format("[%s] [%s] [%s] %s",
     ok and stamp or "--:--:--", self.name, level, tostring(msg)))
 end
 

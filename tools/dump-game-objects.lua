@@ -49,6 +49,32 @@ local function dump(label, className)
   end
 end
 
+-- Question 10: the exact spellings in UE4SS's Key table. config.lua
+-- advertises INSERT/HOME/END/DELETE/PAGE_UP/PAGE_DOWN as valid Hotkey
+-- values on nothing but a guess, and ue.lua refuses to bind a name this
+-- table does not contain. Printed sorted so the answer can be pasted
+-- verbatim into docs/game-objects.md.
+local function dump_key_names()
+  local keys = rawget(_G, "Key")
+  if type(keys) ~= "table" then
+    print("[recon] missing: Key table (question 10 unanswerable)\n")
+    return
+  end
+  local names = {}
+  local ok = pcall(function()
+    for name in pairs(keys) do names[#names + 1] = tostring(name) end
+  end)
+  if not ok then
+    print("[recon] Key: could not iterate the table\n")
+    return
+  end
+  table.sort(names)
+  print(string.format("[recon] Key: %d names\n", #names))
+  for _, name in ipairs(names) do
+    print(string.format("[recon] Key name: %s\n", name))
+  end
+end
+
 local function run_dump()
   dump("controller", "PlayerController")
   dump("playerstate", "PlayerState")
@@ -58,6 +84,7 @@ local function run_dump()
   dump("gamestate",   "GameStateBase")
   dump("gamesession", "GameSession")
   dump("hud",         "HUD")
+  dump_key_names()
 
   local dump_all = get_global("DumpAllObjects")
   if type(dump_all) == "function" then
