@@ -32,9 +32,9 @@ select it.
 
 ## Configuration
 
-See `config.ini` in the mod's folder for all available settings, including the toggle
-hotkey and menu behaviour options. Every key is documented inline with its default and
-valid range.
+See `config.ini` in the mod's folder. Today it ships a single `Hotkey` key (default
+`F3`); more settings will be documented there, inline with their defaults and valid
+ranges, as they are added.
 
 ## Status
 
