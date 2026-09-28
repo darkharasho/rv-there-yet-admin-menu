@@ -129,9 +129,34 @@ describe("menu", function()
   end)
 
   it("an unknown event string is a no-op", function()
-    local m = menu.new(spec, {}); m:open()
+    local m = menu.new(spec, { confirm_destructive = true }); m:open()
+    select_row(m, "kill"); m:input("select")     -- arm a pending confirmation
+    local stack_depth_before = #m.stack
     assert.is_nil(m:input("jump"))
-    assert.is_true(m:view().rows[1].selected)
+    assert.is_true(m:view().rows[index_of(m, "kill")].selected)
+    assert.truthy(m:view().prompt)                -- pending confirmation untouched
+    assert.equal(stack_depth_before, #m.stack)     -- page/stack depth unchanged
+  end)
+
+  it("selecting a destructive row fires immediately when confirm_destructive is false", function()
+    local m = menu.new(spec, { confirm_destructive = false }); m:open()
+    select_row(m, "kill")
+    assert.same({ action = "kill", target = nil }, m:input("select"))
+    assert.is_nil(m:view().prompt)
+  end)
+
+  it("selecting a destructive row fires immediately with default opts", function()
+    local m = menu.new(spec, {}); m:open()
+    select_row(m, "kill")
+    assert.same({ action = "kill", target = nil }, m:input("select"))
+    assert.is_nil(m:view().prompt)
+  end)
+
+  it("menu.new tolerates a non-table opts argument", function()
+    local m = menu.new(spec, 5); m:open()
+    assert.is_true(m:is_open())
+    select_row(m, "kill")
+    assert.same({ action = "kill", target = nil }, m:input("select"))
   end)
 
   it("hover rejects a non-number argument", function()

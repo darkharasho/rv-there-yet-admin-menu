@@ -13,7 +13,9 @@ local function items_of(page)
 end
 
 function M.new(spec, opts)
-  opts = opts or {}
+  if type(opts) ~= "table" then
+    opts = {}
+  end
   if type(spec) ~= "table" then
     spec = { id = "root", title = "", items = {} }
   end
