@@ -1,232 +1,104 @@
-# Game object recon — RV There Yet?
+# Game object recon: RV There Yet?
 
-> **STATUS: TEMPLATE. NO RECON HAS BEEN RUN YET.**
->
-> Every section below is an empty, explicitly unverified placeholder. No
-> class name, property name, function name, or `/Script/...` / `/Game/...`
-> path in this document has been confirmed against the running game — this
-> doc was written on a Linux dev machine with no game install and no live
-> 2-player session available. Every later task that reads this doc (Tasks
-> 6, 9, 10, 11, 12, and `mod/scripts/lib/ue.lua`'s `ASSUMED` table) MUST
-> treat every answer here as unanswered until a human runs the recon tool
-> described below and fills in each section with data quoted verbatim from
-> the dump. Do not let any agent or task guess a plausible-looking value to
-> fill a gap — a fabricated path here silently poisons every task that
-> reads it as canonical.
+> **STATUS: FILLED from an in-game dump on 2026-10-30** (build `RideInc-release-1.4`,
+> UE 5.6, SnowLevel, 4 players, dump taken as a **client**, not the host).
+> Signatures come from UE4SS `GenerateSDK()` (CXXHeaderDump). Backups of the dump
+> live in `~/.cache/rv-recon/dump/` (headers, `.usmap`, `UE4SS.log`, ObjectDump).
+> Names are confirmed to exist. Whether each call *works* when the host calls it
+> on another player is still untested; see "Open" at the end.
 
-## 1. Player pawn/character class and health properties
+## 1. Player character and health
+- Class: `BP_FirstPersonCharacter_C` (`/Game/Ride/Character/Blueprints/BP_FirstPersonCharacter`),
+  C++ base `ARGFirstPersonCharacter` → `AClientAuthoritativeCharacter` → `ACharacter`.
+- Health is damage taken, not HP: `int32 GetCurrentDamageTaken()`, properties
+  `CurrentDamage`, `DeathDamageThreshold`, `TotalDamageTaken`. `bool IsDead()`.
+- God mode: property `Invulnerable` (bool); `Server_UpdateInvulnerable(bool Invulnerable)`.
+- Damage struct `FST_Damage_Results { TArray<FST_Damage_Result> DamageResults_3_42A8… }`,
+  each `FST_Damage_Result { FGameplayTag DamageType_3_…; int32 Damage_7_…; int32 MaxVehicleShieldConsumption_10_…; bool SkipVehicleShield_12_… }`
+  (field names carry BP GUID suffixes; see `ST_Damage_Result.hpp`).
+- Other pawns present in the world: `BP_Monster_C` (snow monster), `BP_Goat_C`,
+  `BP_Vehicle_Winnebago_01_C`.
 
-**Question:** The player pawn/character class and its health-bearing
-properties (health, max health, downed/dead flag).
+## 2. Controller, player state, display name
+- Controller `BP_FirstPersonPlayerController_C` (base `ARGPlayerController`). Only the
+  local one exists on a client; the host sees all of them.
+- Player state `BP_PlayerState_C` (base `ARGPlayerState` → `APlayerState`); one per player.
+- Display name: `APlayerState.PlayerNamePrivate` (FString); also `GetPlayerName()`.
 
-**Grep terms:** class names from the `pawn` / `character` sections of the
-dump; property names containing `Health`, `Max`, `Down`, `Dead`.
+## 3. Death, revive, heal, kill
+On `BP_FirstPersonCharacter_C`:
+- `ServerReviveTarget(PlayerToRevive, bool ForceRevive, bool NoCost, Instigator)`
+- `Server_RevivePlayerAtLocation(PlayerToRevive, FVector Location)`
+- `RevivePlayerSafelyAtLocation(PlayerToRevive, FVector NewLocation, const FST_Damage_Results& DamageToHeal)`
+- `Client_MovePlayerAfterRevive(FVector NewLocation)`, `Client_OnPlayerDied()`
+- `Server_HealPlayerDamage(TargetPlayer, const FST_Damage_Results& DamageToHeal)`
+- `Server_TakePlayerDamage(TargetPlayer, FST_Damage_Results, bool Killbox)`; kill = large damage or `Killbox=true`.
+- Controller also has `Server_HealPlayer(ActorTarget, FST_Damage_Results)`.
 
-**Answer:** **UNVERIFIED — fill from the dump**
+## 4. Checkpoints
+- `BP_CheckPoint_C`, identified by `int32 CheckpointIndex`; `bool Triggered`;
+  `TriggerCheckpoint()`, `GetPlayerStartActor(Controller, out PlayerStart)`.
+- None were loaded on SnowLevel at dump time (`FindAllOf` returned none), so
+  checkpoints stream in. Warp through the cheat manager instead (section 6).
+- Game state `RideGameState_C` has `int32 CurrentCheckpoint`.
 
-**If unanswered / wrong:** Task 6 (health/revive/kill actions) cannot
-target the correct class or properties and cannot be implemented safely.
+## 5. Items
+- Base `BP_Interactable_Actor_C` (C++ `ARGInteractableActor`), classes under
+  `/Game/Ride/Interactables/`. Full list in the pak listing / ObjectDump.
+- Spawn paths: `RGCheatManager.GiveItem(TSubclassOf<ARGInteractableActor>)`,
+  `BP_CheatManager_C.SpawnItemInFrontOfPlayer(Class)`,
+  controller `Server_SpawnItem(Class, FVector SpawnLocation)`,
+  `Server_CheatSpawnAndAttach(Class)`, character `Server_SpawnInteractableAttachedToPlayer(TSoftClassPtr)`.
+- Counters: character `Server_UpdateEpiPenCount(int32)`, `Server_UpdatePartsCount(int32)`.
 
-## 2. Player controller and player state classes, and display name property
+## 6. Cheat manager
+Present: `BP_CheatManager_C` (base `URGCheatManager`) on the local controller, created
+by the bundled `CheatManagerEnablerMod`. Useful functions:
+`RevivePlayer()`, `TeleportToCheckpoint(int32)`, `RestartAtCheckpoint(int32)`,
+`TeleportToVehicle()`, `GodPlayers(bool)`, `GodVehicles(bool)`, `GiveItem(Class)`,
+`GiveEpiPens(int32)`, `GivePart(int32)`, `DamageAllPlayers(int32)`, `DamageOneClientPlayer(int32)`,
+`RepairEngineDamage/RepairWheelDamage/RepairFrameDamage(int32)`, `SaveGame()`,
+`RemoveInactivePlayers()`, `IsAnyPlayerAttachedToActor(Actor, out bool)`,
+`Unlock{Jungle,Snow,Mabutts}LevelStartingCheckpoint(int32)`. These act on the *local*
+player; per-target actions use the character functions above.
 
-**Question:** The player controller and player state classes, and which
-property holds the display name.
+## 7. Host authority
+- On a client: no `GameModeBase` instance (dump shows none) and one controller.
+- Detect host with `FindFirstOf("GameModeBase")` ≠ nil, or `HasAuthority()` on the local pawn.
+- **Movement is client-authoritative** (`AClientAuthoritativeCharacter`,
+  `ClientAuthoritativeMove`). Moving another player from the host must go through a
+  `Client_*` RPC on their pawn (`Client_MovePlayerAfterRevive(FVector)`,
+  `Client_LaunchCharacter`), not `K2_TeleportTo` on the server.
+- Best teleport candidate: C++ `ARGFirstPersonCharacter::TeleportPlayerTo(const FVector&, const FRotator&)`,
+  the game's own teleport for this movement model. The cheat manager's teleports are
+  local-player only (`TeleportToCheckpoint`, `RestartAtCheckpoint`, `TeleportToVehicle`);
+  `Golf_TeleportAllTo{Tee,Green,Flag}` move everyone but only in the golf level, which
+  shows the C++ side can move remote players.
 
-**Grep terms:** class names from the `controller` / `playerstate` sections
-of the dump; property names containing `Name`, `DisplayName`, `PlayerName`.
+## 8. HUD and ReceiveDrawHUD
+- HUD class is plain `/Script/Engine.HUD` (`HUD_0`), no Blueprint subclass.
+- `ReceiveDrawHUD` **never fired** (0 fires logged). The HUD canvas path is dead.
+- Menu must be UMG built from Lua, or keyboard-driven with on-screen text.
 
-**Answer:** **UNVERIFIED — fill from the dump**
+## 9. Mouse plumbing
+Confirmed on `APlayerController`: `bool GetMousePosition(float& X, float& Y)`,
+`bool IsInputKeyDown(FKey)`, `uint8 bShowMouseCursor`. `ue.lua` `ASSUMED` names are right.
 
-**If unanswered / wrong:** Any task that needs to list connected players by
-name (player picker UI, targeting) has no confirmed source for the label
-and cannot be implemented.
+## 10. UE4SS Key names
+165 names. Note `INS` and `DEL` (not INSERT/DELETE); `HOME`, `END`, `PAGE_UP`,
+`PAGE_DOWN`, `F1`–`F24`, `NUM_ZERO`–`NUM_NINE` exist. `config.lua` KEY_NAMES needs
+INSERT→INS, DELETE→DEL.
 
-## 3. Death and revive functions
+## Freeing a grabbed player
+- Player-held-by-player: the holder's `CurrentPickUpActor` / `Current3rdPersonPickUpActor`
+  is the held pawn. Free with holder `Server_DropActor(HeldActor, 0, false, …)` or
+  `TryToClearPickedUpActor(Actor)`; `IsPlayerAttachedToThisPlayer(Player, out bool)` to check.
+- Monster/seat grabs: the player is seated on a "rideable" (`SetIsPassenger`, `OnPlayerSit`
+  on the monster). Free with victim `Client_ForceUnseat(RideableActor)` or
+  `Server_SitOnRideableActor(Rideable, false, SeatType)`. Monkeys: `CheckForMonkeyGrab`.
+- Ragdoll recovery: `Server_Ragdoll(bool)`.
 
-**Question:** The function(s) that run on death and on revive.
-
-**Grep terms:** `Revive`, `Down`, `Die`, `Respawn`, `Damage`.
-
-**Answer:** **UNVERIFIED — fill from the dump**
-
-**If unanswered / wrong:** Task 6's revive/kill actions have no confirmed
-entry point and risk calling a function that doesn't exist or has
-different semantics than assumed.
-
-## 4. Checkpoint actor class and self-identification
-
-**Question:** The checkpoint actor class — and how a checkpoint identifies
-itself (index? name? tag?).
-
-**Grep terms:** `Checkpoint`, `Respawn`, `Spawn`, `Milestone`.
-
-**Answer:** **UNVERIFIED — fill from the dump**
-
-**If unanswered / wrong:** Task 9 (warp to checkpoint) has no confirmed
-class to enumerate or field to key a checkpoint list off of, and cannot be
-implemented.
-
-## 5. Spawnable item base class and concrete Blueprint classes
-
-**Question:** The spawnable item base class — and the set of concrete
-Blueprint classes under `/Game/`.
-
-**Grep terms:** `Pickup`, `Item`, `Consumable`, `Prop`.
-
-**Answer:** **UNVERIFIED — fill from the dump**
-
-**If unanswered / wrong:** Task 10 (spawn arbitrary items) has no confirmed
-base class to spawn against and no confirmed list of spawnable Blueprint
-paths, and cannot be implemented.
-
-## 6. CheatManager availability and working functions
-
-**Question:** Whether the game exposes a CheatManager (the loader ships
-`CheatManagerEnablerMod` enabled), and which of `God` / `Teleport` /
-`Summon` actually work.
-
-**Grep terms:** `CheatManager`, `God`, `Teleport`, `Summon`.
-
-**Answer:** **UNVERIFIED — fill from the dump**
-
-**If unanswered / wrong:** Tasks that would otherwise shortcut through
-built-in cheat commands (rather than reimplementing teleport/spawn/god
-logic by hand) cannot rely on that shortcut and must fall back to manual
-property/function manipulation confirmed by questions 1–5.
-
-## 7. Host authority detection
-
-**Question:** How the host distinguishes itself: which property or
-function reports authority (`HasAuthority`, `GetLocalRole`, `IsServer`).
-
-**Grep terms:** `HasAuthority`, `GetLocalRole`, `IsServer`.
-
-**Answer:** **UNVERIFIED — fill from the dump**
-
-**If unanswered / wrong:** Every task that must act authoritatively on
-other players (revive, kill, teleport, item spawn on someone else's pawn)
-has no confirmed way to gate host-only behavior, risking the mod running
-unauthoritative logic on a non-host client.
-
-## 8. AHUD subclass and whether ReceiveDrawHUD fires
-
-**Question:** Is there an `AHUD` subclass, and does its draw event fire?
-Record the class path, and confirm by hooking it — **the menu's entire
-rendering approach depends on this answer.** If it fires, also confirm
-`DrawRect` and `DrawText` are callable on the HUD object from inside the
-hook.
-
-**Grep terms:** `HUD` (in the dump); hook target
-`/Script/Engine.HUD:ReceiveDrawHUD` (already wired in
-`tools/dump-game-objects.lua`, throttled to the first 5 fires so it can't
-flood `UE4SS.log`).
-
-**Answer:** **UNVERIFIED — fill from the dump**
-
-**DrawRect / DrawText callable from the hook:** **UNVERIFIED — fill from the dump**
-(Answered by the two `[recon] ReceiveDrawHUD: type(hud.DrawRect) = ...` and
-`[recon] ReceiveDrawHUD: type(hud.DrawText) = ...` lines that
-`tools/dump-game-objects.lua` prints on the hook's first fire only. A
-value of `function` means it is callable; anything else (`nil`, `table`,
-etc.) means it is not.)
-
-**This is the single most important question in this recon.** If
-`ReceiveDrawHUD` never fires, the plan's IMGUI-via-HUD-hook rendering
-approach is dead and Task 8 must take the documented fallback ladder
-instead:
-1. Construct a minimal UMG widget from Lua, or
-2. Ship keyboard-only for v1 (no overlay rendering at all).
-
-Do not proceed with Task 8 as currently planned until this section is
-filled in and confirms the hook fires.
-
-## 9. Mouse plumbing on the local PlayerController
-
-**Question:** Confirm `bShowMouseCursor` is writable, and which of
-`GetMousePosition` / `WasInputKeyJustPressed` / `IsInputKeyDown` are
-callable. Record the current value of `bShowMouseCursor` during normal
-play — Task 8 must restore it, not just set it.
-
-**Grep terms:** `GetMousePosition`, `WasInputKeyJustPressed`,
-`IsInputKeyDown`, `bShowMouseCursor` (in the `controller` section of the
-dump).
-
-**Answer:** **UNVERIFIED — fill from the dump**
-
-**`bShowMouseCursor` writable:** **UNVERIFIED — fill from the dump**
-
-**Callable functions among `GetMousePosition` / `WasInputKeyJustPressed` /
-`IsInputKeyDown`:** **UNVERIFIED — fill from the dump**
-
-**`bShowMouseCursor` value during normal play:** **UNVERIFIED — fill from the dump**
-
-**Cross-reference:** `mod/scripts/lib/ue.lua` already contains an
-`ASSUMED` table (`mouse_position_fn = "GetMousePosition"`,
-`mouse_down_fn = "IsInputKeyDown"`, `left_mouse_key = "LeftMouseButton"`,
-`cursor_visible_prop = "bShowMouseCursor"`) built entirely from guesses
-awaiting exactly this recon. Once this section is answered, confirming or
-correcting question 9 means editing that one `ASSUMED` table in
-`mod/scripts/lib/ue.lua` — no other file needs to change for this
-correction to take effect.
-
-**If unanswered / wrong:** Task 8 (mouse-driven menu interaction) is built
-on unverified guesses and may silently fail to move the cursor, detect
-clicks, or restore the player's cursor state after closing the menu.
-
-## 10. UE4SS `Key` table names for the configurable hotkey
-
-**Question:** Dump UE4SS's global `Key` table and record the exact spelling
-of every key name the mod advertises as a valid `Hotkey` value:
-`F1`-`F12`, `INSERT`, `HOME`, `END`, `DELETE`, `PAGE_UP`, `PAGE_DOWN`.
-For each one, record whether the name exists in the table verbatim and, if
-not, what the actual spelling is (abbreviated forms such as `INS`, `DEL`,
-`PAGEUP`, `PAGE_UP`, `PRIOR`/`NEXT` are all plausible and only the dump can
-settle it).
-
-**Grep terms:** `[recon] Key name:` in `UE4SS.log` — the sorted list that
-`tools/dump-game-objects.lua` prints for every name in the `Key` table on
-each F9 dump.
-
-**Answer:** **UNVERIFIED — fill from the dump**
-
-**Names confirmed present verbatim:** **UNVERIFIED — fill from the dump**
-
-**Names that differ, with their actual spelling:** **UNVERIFIED — fill from the dump**
-
-**Cross-reference:** `mod/scripts/lib/config.lua`'s `M.KEY_NAMES` is the
-list the mod accepts from `config.ini`, and `mod/config.ini` and
-`README.md` document those same names to the user as supported. The
-function-key names (`F1`-`F12`) are near-certain; the six non-function
-names are guesses. `mod/scripts/lib/ue.lua`'s `bind_key` refuses to
-register a name that UE4SS's `Key` table does not contain and warns
-instead, so a wrong spelling here is a visible warning rather than a
-hotkey that silently never fires — but the user still cannot bind that
-key until this section is answered. Do not guess at corrections; copy the
-spellings from the dump.
-
-**If unanswered / wrong:** A user who sets `Hotkey = DELETE` (a value
-`config.ini` tells them is valid) gets a refused binding and a warning in
-`UE4SS.log`, and has no working way to open the menu on that key.
-
-## How to run this recon
-
-1. Install `tools/dump-game-objects.lua` as its own UE4SS mod, separate
-   from the shipped RVAdminMenu package:
-   - Copy the file to `<UE4SS mods dir>/RVRecon/scripts/main.lua`.
-   - Create an (empty is fine) `<UE4SS mods dir>/RVRecon/enabled.txt`.
-2. Launch the game with UE4SS and this mod enabled.
-3. Host a session with a second player connected — several of the
-   questions above (display name, authority, revive/kill) only make sense
-   with two players present.
-4. Press **F9** in-game to trigger the dump.
-5. Collect two files:
-   - `UE4SS.log` (next to `UE4SS.dll` / the game executable)
-   - `ObjectDump.txt` (also written next to `UE4SS.dll`, produced by
-     `DumpAllObjects()`)
-6. For each section above, search both files with the listed grep terms
-   and fill in the answer by quoting the dump verbatim — exact class
-   paths, exact property/function names. Do not paraphrase or "clean up"
-   a path; copy it exactly as it appears in the dump.
-7. Once every section is filled in, replace the status banner at the top
-   of this file to say recon is complete, and update
-   `mod/scripts/lib/ue.lua`'s `ASSUMED` table per question 9's findings.
+## Open (needs a host test)
+- Whether each `Server_*` call made by the host on another player's pawn takes effect.
+- Teleport of a live remote player via `Client_MovePlayerAfterRevive`.
+- Building a UMG widget from Lua in this build.

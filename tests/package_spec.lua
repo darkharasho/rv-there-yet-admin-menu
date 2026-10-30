@@ -63,9 +63,14 @@ describe("built package", function()
     local listing = shell(string.format("unzip -Z1 %q", zip)) or ""
     local entries = {}
     for name in listing:gmatch("[^\r\n]+") do entries[name] = true end
-    for _, required in ipairs({ "manifest.json", "icon.png", "README.md" }) do
+    for _, required in ipairs({ "manifest.json", "icon.png", "README.md",
+      "config.ini", "enabled.txt", "scripts/main.lua" }) do
       assert.is_true(entries[required] == true,
         required .. " is not at the root of " .. zip)
+    end
+
+    for name in pairs(entries) do
+      assert.is_nil(name:match("^mod/"), "zip must not contain a mod/ subfolder: " .. name)
     end
 
     local png = shell(string.format("unzip -p %q icon.png", zip)) or ""

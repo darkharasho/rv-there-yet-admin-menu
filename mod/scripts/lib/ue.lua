@@ -3,10 +3,9 @@
 -- "fewer features + a logged warning", never a crash.
 local M = {}
 
--- UNVERIFIED PENDING RECON: docs/game-objects.md (Task 2) has not been written
--- yet because it needs a live 2-player Windows session. These are the
--- standard UE PlayerController names we assume for mouse plumbing. Once
--- recon lands, correct them here in one place.
+-- Mouse plumbing names, confirmed to exist on APlayerController by the
+-- 2026-10-30 dump (docs/game-objects.md section 9). Unused by the v0.1
+-- keyboard-only menu but kept for the later mouse work.
 local ASSUMED = {
   mouse_position_fn = "GetMousePosition",   -- PlayerController function -> x, y
   mouse_down_fn = "IsInputKeyDown",         -- PlayerController function(key_name) -> boolean
@@ -17,9 +16,31 @@ local ASSUMED = {
 local Adapter = {}
 Adapter.__index = Adapter
 
+-- Plain (non-raw) lookup: UE4SS may serve some globals through _G's
+-- metatable, which rawget cannot see.
+local function lookup(t, name)
+  local ok, v = pcall(function() return t[name] end)
+  if ok then return v end
+  return nil
+end
+
+-- UE4SS exposes some globals (FName, FText, ...) as callable tables or
+-- userdata with a __call metamethod rather than plain functions.
+local function callable(v)
+  if type(v) == "function" then return true end
+  local t = type(v)
+  -- UE4SS FName/FText are userdata whose metatable does not expose __call
+  -- to Lua (seen in game, v0.2.2), so any userdata counts as callable; the
+  -- call sites are pcall-guarded.
+  if t == "userdata" then return true end
+  if t ~= "table" then return false end
+  local ok, mt = pcall(getmetatable, v)
+  return ok and type(mt) == "table" and mt.__call ~= nil
+end
+
 local function get_global(name)
-  local v = rawget(_G, name)
-  if type(v) == "function" then return v end
+  local v = lookup(_G, name)
+  if callable(v) then return v end
   return nil
 end
 
@@ -117,7 +138,9 @@ local function invoke(self, obj, fn_name, ...)
   local n = select("#", ...)
   local ok_fn, fn = pcall(function() return obj[fn_name] end)
   if not ok_fn then return false, tostring(fn) end
-  if type(fn) ~= "function" then
+  -- UE4SS returns UFunctions as callable userdata, not Lua functions
+  -- (every call failed this check in game, v0.2.3).
+  if fn == nil or not callable(fn) then
     return false, string.format("no such function: %s", tostring(fn_name))
   end
   local res = table.pack(pcall(fn, obj, table.unpack(args, 1, n)))
@@ -142,6 +165,7 @@ function Adapter:call_quiet(obj, fn_name, ...)
 end
 
 function Adapter:is_valid(obj)
+  if obj == nil then return false end
   local fn = get_global("IsValid")
   if fn then
     local ok, v = pcall(fn, obj)
@@ -149,7 +173,20 @@ function Adapter:is_valid(obj)
     warn(self, string.format("IsValid() failed: %s", tostring(v)))
     return false
   end
-  return obj ~= nil
+  -- UE4SS has no global IsValid: it is a method on every UObject wrapper.
+  -- A nullptr wrapper (a corpse pawn's PlayerState) still answers it, with
+  -- false. Treating "no global" as "valid" let dead objects through (v0.2.4).
+  local ok, v = pcall(function() return obj:IsValid() end)
+  if ok and type(v) == "boolean" then return v end
+  -- Could not ask. A null wrapper still has address 0; anything else is
+  -- taken as valid (treating "unknown" as invalid emptied the player list).
+  local oka, addr = pcall(function() return obj:GetAddress() end)
+  if oka and type(addr) == "number" then return addr ~= 0 end
+  if not self.warned_is_valid then
+    self.warned_is_valid = true
+    warn(self, string.format("IsValid() unusable on %s: %s", type(obj), tostring(v)))
+  end
+  return type(obj) == "table" or type(obj) == "userdata"
 end
 
 function Adapter:class_of(obj)
@@ -182,13 +219,12 @@ end
 function Adapter:bind_key(key_name, fn)
   local reg = get_global("RegisterKeyBind")
   if not reg or type(fn) ~= "function" then return false end
-  local keys = rawget(_G, "Key")
+  local keys = lookup(_G, "Key")
   local key = key_name
   if type(keys) == "table" then
     -- When UE4SS's Key table exists it is authoritative. Passing an
     -- unknown name through as a raw string registers a bind that silently
     -- never fires, so fail loudly instead and name the key.
-    -- Spellings are UNVERIFIED: docs/game-objects.md question 10.
     if keys[key_name] == nil then
       warn(self, string.format(
         "bind_key(%s) failed: UE4SS's Key table has no such key name; the hotkey is not bound",

@@ -1,0 +1,68 @@
+name: Release
+
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Check tag matches manifest version
+        run: |
+          version="$(jq -r .version_number manifest.json)"
+          if [ "v$version" != "$GITHUB_REF_NAME" ]; then
+            echo "::error::Tag $GITHUB_REF_NAME does not match manifest version $version"
+            exit 1
+          fi
+          echo "VERSION=$version" >> "$GITHUB_ENV"
+
+      - name: Install Lua 5.4 and busted
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y lua5.4 liblua5.4-dev luarocks
+          sudo luarocks --lua-version=5.4 install busted
+
+      - name: Test
+        run: scripts/test.sh
+
+      - name: Build package
+        run: scripts/build-package.sh
+
+      - name: Release notes from changelog
+        run: |
+          awk -v v="## $VERSION" '$0 == v {on=1; next} /^## / {on=0} on' CHANGELOG.md > notes.md
+          cat >> notes.md <<NOTES
+
+          Install from Thunderstore with HML or r2modman, or download \`RVAdminMenu-$VERSION.zip\` below and use HML's **Install from file**. Requires unreal_shimloader.
+          NOTES
+
+      - name: Create or update GitHub release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          zip="dist/RVAdminMenu-$VERSION.zip"
+          if gh release view "$GITHUB_REF_NAME" >/dev/null 2>&1; then
+            gh release upload "$GITHUB_REF_NAME" "$zip" --clobber
+            # Deleting a tag to re-push it turns its release into a draft; publish it again.
+            gh release edit "$GITHUB_REF_NAME" --draft=false
+          else
+            gh release create "$GITHUB_REF_NAME" "$zip" --title "RVAdminMenu $VERSION" --notes-file notes.md
+          fi
+
+      # Skips versions already on Thunderstore, so re-pushing a tag is safe.
+      # --categories only matters for the first upload; later runs keep the site's categories.
+      - name: Publish to Thunderstore
+        env:
+          THUNDERSTORE_TOKEN: ${{ secrets.THUNDERSTORE_TOKEN }}
+        run: scripts/thunderstore-publish.sh "dist/RVAdminMenu-$VERSION.zip" --community rv-there-yet --categories mods,tools
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: RVAdminMenu-${{ env.VERSION }}
+          path: dist/*.zip

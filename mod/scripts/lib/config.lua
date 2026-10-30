@@ -1,16 +1,14 @@
 local M = {}
 
--- UNVERIFIED: the non-function key spellings below are guesses. UE4SS's
--- own `Key` table is the authority and cannot be read from this dev box --
--- see docs/game-objects.md question 10, which asks the recon to dump it
--- and confirm these exact spellings. ue.lua:bind_key refuses to bind a
--- name the Key table does not have, so a wrong spelling here surfaces as
--- a warning rather than a hotkey that silently never fires.
+-- Spellings confirmed against UE4SS's own `Key` table (docs/game-objects.md
+-- section 10): note INS and DEL, not INSERT/DELETE. ue.lua:bind_key still
+-- refuses a name the Key table lacks, so a future rename surfaces as a
+-- warning rather than a hotkey that silently never fires.
 M.KEY_NAMES = {}
 for i = 1, 12 do
   M.KEY_NAMES["F" .. i] = true
 end
-for _, name in ipairs({ "INSERT", "HOME", "END", "DELETE", "PAGE_UP", "PAGE_DOWN" }) do
+for _, name in ipairs({ "INS", "HOME", "END", "DEL", "PAGE_UP", "PAGE_DOWN" }) do
   M.KEY_NAMES[name] = true
 end
 
@@ -19,6 +17,7 @@ local DEFAULTS = {
   log_level = "INFO",
   confirm_destructive = true,
   heal_amount = 100,
+  mouse = true,
 }
 
 local TRUE_VALUES = { ["1"] = true, ["true"] = true, ["yes"] = true, ["on"] = true }
@@ -131,6 +130,7 @@ function M.resolve(ini, logger)
     log_level = resolve_log_level(ini, logger),
     confirm_destructive = resolve_bool(ini, "confirmdestructive", "ConfirmDestructive", DEFAULTS.confirm_destructive, logger),
     heal_amount = resolve_heal_amount(ini, logger),
+    mouse = resolve_bool(ini, "mouse", "Mouse", DEFAULTS.mouse, logger),
   }
 end
 

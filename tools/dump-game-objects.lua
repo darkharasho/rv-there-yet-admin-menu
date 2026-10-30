@@ -84,7 +84,23 @@ local function run_dump()
   dump("gamestate",   "GameStateBase")
   dump("gamesession", "GameSession")
   dump("hud",         "HUD")
+  dump("rv character",   "BP_FirstPersonCharacter_C")
+  dump("rv controller",  "BP_FirstPersonPlayerController_C")
+  dump("rv playerstate", "BP_PlayerState_C")
+  dump("rv checkpoint",  "BP_CheckPoint_C")
+  dump("rv cheatmanager", "RGCheatManager")
   dump_key_names()
+
+  -- GenerateSDK writes CXXHeaderDump/ (every loaded class, including the
+  -- Blueprint functions' parameter lists); DumpUSMAP writes Mappings.usmap,
+  -- which lets the paks be read offline with their property data.
+  for _, name in ipairs({ "GenerateSDK", "DumpUSMAP" }) do
+    local fn = get_global(name)
+    if type(fn) == "function" then
+      local ok, err = pcall(fn)
+      print(string.format("[recon] %s() %s\n", name, ok and "done" or ("failed: " .. tostring(err))))
+    end
+  end
 
   local dump_all = get_global("DumpAllObjects")
   if type(dump_all) == "function" then

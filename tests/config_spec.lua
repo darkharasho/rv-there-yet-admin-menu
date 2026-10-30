@@ -36,6 +36,14 @@ describe("config", function()
     assert.truthy(joined:find("F3"))
   end)
 
+  it("Mouse defaults to true and can be turned off", function()
+    assert.is_true(config.resolve({}, quiet({})).mouse)
+    assert.is_false(config.resolve({ mouse = "false" }, quiet({})).mouse)
+    local lines = {}
+    assert.is_true(config.resolve({ mouse = "maybe" }, quiet(lines)).mouse)
+    assert.truthy(table.concat(lines):find("Mouse"))
+  end)
+
   it("clamps heal amount into 1..1000", function()
     assert.equal(1000, config.resolve({ healamount = "99999" }, quiet({})).heal_amount)
     assert.equal(1, config.resolve({ healamount = "-5" }, quiet({})).heal_amount)
@@ -100,5 +108,16 @@ describe("config", function()
 
   it("tolerates a logger that is not a logger", function()
     assert.equal("F3", config.resolve({ hotkey = "F27" }, "not a logger").hotkey)
+  end)
+end)
+
+describe("config hotkey names", function()
+  it("accepts the confirmed UE4SS spellings INS and DEL", function()
+    local config = require("mod.scripts.lib.config")
+    for _, name in ipairs({ "INS", "DEL", "HOME", "END", "PAGE_UP", "PAGE_DOWN", "F12" }) do
+      assert.is_true(config.KEY_NAMES[name], name)
+    end
+    assert.is_nil(config.KEY_NAMES.INSERT)
+    assert.is_nil(config.KEY_NAMES.DELETE)
   end)
 end)

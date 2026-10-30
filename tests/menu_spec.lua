@@ -287,7 +287,23 @@ describe("menu", function()
     table.remove(first.rows)
     assert.equal(LABELS.spawn, m:view().rows[1].label)
     assert.is_true(m:view().rows[1].selected)
-    assert.equal(#spec.items, #m:view().rows)
+    assert.equal(#spec.items + 1, #m:view().rows)
+  end)
+
+  it("ends every page with a Back row (Close on the root)", function()
+    local m = menu.new(spec, {}); m:open()
+    local rows = m:view().rows
+    assert.equal("Close", rows[#rows].label)
+    assert.equal("back", rows[#rows].kind)
+    select_row(m, "players"); m:input("select")
+    local depth_title = m:view().title
+    rows = m:view().rows
+    assert.equal("< Back", rows[#rows].label)
+    m:hover(#rows); m:input("select")
+    assert.are_not.equal(depth_title, m:view().title)
+    rows = m:view().rows
+    m:hover(#rows); m:input("select")
+    assert.is_false(m:is_open())
   end)
 
   it("entering a submenu resets its cursor to the first row", function()
