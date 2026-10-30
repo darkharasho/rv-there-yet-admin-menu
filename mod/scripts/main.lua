@@ -1,7 +1,7 @@
 -- RVAdminMenu entry point. UE4SS runs <Mod>/scripts/main.lua with no
 -- package.path for our modules, so work out our own directory the same way
 -- MoreRVers does and prepend it.
-local MOD_NAME, MOD_VERSION = "RVAdminMenu", "0.2.12"
+local MOD_NAME, MOD_VERSION = "RVAdminMenu", "0.2.13"
 
 local dir = debug.getinfo(1, "S").source:match("^@?(.*)[/\\][^/\\]*$")
 if dir then

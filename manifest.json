@@ -1,7 +1,7 @@
 {
     "name": "RVAdminMenu",
     "author": "darkharasho",
-    "version_number": "0.2.12",
+    "version_number": "0.2.13",
     "description": "Host-side admin menu: spawn items, revive/kill/heal/teleport players, warp to checkpoints",
     "website_url": "https://github.com/darkharasho/rv-there-yet-admin-menu",
     "dependencies": [

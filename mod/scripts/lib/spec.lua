@@ -159,6 +159,8 @@ function M.build(actions)
       act("me_heal", "Heal me"),
       act("me_unseat", "Unseat me"),
       act("me_epipens", "Give 5 epipens"),
+      act("me_scrap", "Give 10 scrap", 10),
+      act("me_scrap", "Give 50 scrap", 50),
     },
   }
 

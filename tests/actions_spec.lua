@@ -103,6 +103,8 @@ describe("host gating", function()
     assert.equal("Host only", a:run("tp_all_rv"))
     assert.equal("Host only", a:run("p_kill", { name = "Ann", addr = 2 }))
     assert.equal("Host only", a:run("all_heal"))
+    assert.equal("Host only", a:run("me_heal"))
+    assert.equal("Host only", a:run("me_scrap", 10))
     assert.equal(0, #w.ann.calls)
   end)
 
@@ -364,14 +366,16 @@ describe("players", function()
 end)
 
 describe("items", function()
-  local function map(entries)
-    return { ForEach = function(_, fn)
-      for k, v in pairs(entries) do
-        fn({ get = function() return { ToString = function() return k end } end },
-           { get = function() return v end })
-      end
-    end }
-  end
+  it("gives scrap through the cheat, falling back to the parts RPC", function()
+    local a, w = world()
+    w.cheat.GivePart = function(self, n) self.calls[#self.calls + 1] = { fn = "GivePart", args = { n } }; return true end
+    assert.equal("Gave 50 scrap", a:run("me_scrap", 50))
+    assert.same({ 50 }, w.cheat.calls[1].args)
+    w.ue.fail_on["call:GivePart"] = true
+    w.host.Server_UpdatePartsCount = function(self, n) self.parts = n end
+    assert.equal("Gave 10 scrap", a:run("me_scrap", 10))
+    assert.equal(10, w.host.parts)
+  end)
 
   it("spawns fragile items straight into the hands", function()
     local a, w = world()
@@ -381,14 +385,14 @@ describe("items", function()
     assert.equal(0, #w.cheat.calls)
   end)
 
-  it("lists registered items sorted and spawns via the cheat", function()
+  it("never walks the cheat manager's item registry", function()
     local a, w = world()
-    w.cheat.RegisteredItemCommands = map({ zebra = "Z", apple = "A" })
+    local walked = false
+    w.cheat.RegisteredItemCommands = { ForEach = function() walked = true end }
+    a.items = { { name = "Axe", path = "/Game/A.A_C" } }
     local list = a:item_list()
-    assert.equal("apple", list[1].name)
-    assert.equal("Z", list[2].class)
-    a:run("spawn", list[1])
-    assert.same({ "A" }, w.cheat.calls[1].args)
+    assert.is_false(walked)
+    assert.equal("Axe", list[1].name)
   end)
 
   it("falls back to GiveItem, and reports an empty list", function()

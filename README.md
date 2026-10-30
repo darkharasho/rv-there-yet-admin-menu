@@ -56,7 +56,8 @@ Restart at checkpoint) ask for confirmation: press Enter again to confirm.
 - **Players** (host only): per player, teleport to me / me to them / send to the RV,
   revive, heal, kill, free from a grab, force unseat, god mode, speed x2.
 - **Everyone** (host only): revive all, heal all, free all from grabs, god mode all.
-- **Me:** god mode, revive me, heal me, give 5 epipens.
+- **Me:** god mode, revive me, heal me (host only), give 5 epipens, give 10 or 50 scrap
+  (host only).
 - **Spawn item:** a fixed list of pickups, 15 per page. Type to search (letters, digits,
   space); Backspace erases.
 

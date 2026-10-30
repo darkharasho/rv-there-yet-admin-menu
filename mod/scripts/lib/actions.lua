@@ -102,15 +102,6 @@ local function tostr(v)
   return nil
 end
 
--- TMap ForEach hands back wrapper params that need :get().
-local function unwrap(x)
-  if x ~= nil and type(x) ~= "string" and type(x) ~= "number" then
-    local ok, v = pcall(function() return x:get() end)
-    if ok and v ~= nil then return v end
-  end
-  return x
-end
-
 local function address(obj)
   local ok, a = pcall(function() return obj:GetAddress() end)
   if ok then return a end
@@ -768,18 +759,11 @@ end
 
 -- Sorted { name, class } list from the cheat manager's registered item
 -- table, or nil plus a reason.
+-- Always the static list (lib/items.lua). Walking the cheat manager's
+-- RegisteredItemCommands TMap only ever ran on a host (a client's is empty)
+-- and is the suspect for a host crash in the spawn menu (v0.2.12).
 function Actions:item_list()
-  local cm = self:cheat_manager()
-  if not cm then return nil, "no item list available" end
-  local map = self.ue:get(cm, "RegisteredItemCommands")
-  local out, ok = {}, false
-  if map ~= nil then
-    ok = self.ue:call_quiet(map, "ForEach", function(k, v)
-      local name, cls = tostr(unwrap(k)), unwrap(v)
-      if name ~= nil and cls ~= nil then out[#out + 1] = { name = name, class = cls } end
-    end)
-  end
-  if not ok or #out == 0 then out = self:static_items() end
+  local out = self:static_items()
   if #out == 0 then return nil, "no item list available" end
   table.sort(out, function(a, b) return a.name:lower() < b.name:lower() end)
   return out
@@ -869,7 +853,7 @@ local HANDLERS = {
     local ok, why = self:cheat("RevivePlayer")
     return ok and "Revived" or ("Revive failed: " .. why)
   end },
-  me_heal = { fn = function(self)
+  me_heal = { host = true, fn = function(self)
     local me = self:local_pawn()
     if not me then return "no local player" end
     return self:heal(me)
@@ -878,6 +862,16 @@ local HANDLERS = {
     local me = self:local_pawn()
     if not me then return "no local player" end
     return self:force_unseat(me)
+  end },
+  -- Scrap is "parts" in the game. Host only: the host owns the count.
+  me_scrap = { host = true, fn = function(self, n)
+    n = tonumber(n) or 10
+    if self:cheat("GivePart", n) then return string.format("Gave %d scrap", n) end
+    local me = self:local_pawn()
+    if not me then return "no local player" end
+    local ok, err = self.ue:call(me, "Server_UpdatePartsCount", n)
+    if ok then return string.format("Gave %d scrap", n) end
+    return "Scrap failed: " .. short(err)
   end },
   me_epipens = { fn = function(self)
     local ok, why = self:cheat("GiveEpiPens", 5)

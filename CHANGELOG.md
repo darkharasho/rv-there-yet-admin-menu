@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.2.13
+
+- Fix attempt: browsing Spawn item crashed a host's game. The item list no longer reads
+  the cheat manager's item registry (only a host's has entries); everyone uses the fixed
+  list.
+- Me: Give 10 scrap and Give 50 scrap (host only), through the cheat manager's GivePart.
+- Heal me is host only. A client's heal request is accepted but ignored by the host, so
+  the menu now says "Host only" instead of a false "Healed".
+
 ## 0.2.12
 
 - Fix: god mode wore off. The game's invulnerability is a timed buff, so god mode (me,
