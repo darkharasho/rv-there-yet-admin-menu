@@ -805,6 +805,79 @@ function Actions:item_class(item)
   return nil, "item not loaded"
 end
 
+-- Server_CheatSpawnAndAttach spawns the item but can leave it on the floor
+-- when the actor reaches us after the server's pickup call. Watch for the new
+-- actor for a few seconds and pick it up ourselves.
+local CATCH_MS, CATCH_TRIES, CATCH_RADIUS = 200, 15, 800
+
+function Actions:new_actors(class_name, before)
+  local out = {}
+  for _, o in ipairs(self.ue:find_all(class_name) or {}) do
+    local seen = false
+    for _, b in ipairs(before) do
+      if same_object(o, b) then seen = true; break end
+    end
+    if not seen and self:valid(o) then out[#out + 1] = o end
+  end
+  return out
+end
+
+function Actions:catch_tick(class_name, before)
+  local me = self:local_pawn()
+  if not me then return true end
+  local fresh = self:new_actors(class_name, before)
+  local held = self.ue:get(me, "CurrentPickUpActor")
+  for _, o in ipairs(fresh) do
+    if same_object(o, held) then
+      log(self, "info", "spawn: " .. class_name .. " is in your hands")
+      return true
+    end
+  end
+  local here = self:location(me)
+  local best, best_d
+  for _, o in ipairs(fresh) do
+    local l = self:location(o)
+    if here and l then
+      local d = math.sqrt((l.X - here.X) ^ 2 + (l.Y - here.Y) ^ 2 + (l.Z - here.Z) ^ 2)
+      if d <= CATCH_RADIUS and (not best_d or d < best_d) then best, best_d = o, d end
+    end
+  end
+  if best then
+    if not self.ue:call_quiet(me, "PickUpActor", best) then
+      self.ue:call_quiet(me, "Server_PickUpActor", best)
+    end
+  end
+  return false
+end
+
+local function class_name_of(item)
+  return type(item.path) == "string" and item.path:match("%.([^%.]+)$") or nil
+end
+
+-- before: the item's actors that existed before the spawn call.
+function Actions:catch_in_hands(item, before)
+  local class_name = class_name_of(item)
+  local loop = lookup(self.env, "LoopAsync")
+  if not class_name or not callable(loop) then return end
+  local tries, finished = 0, false
+  pcall(loop, CATCH_MS, function()
+    if finished then return true end
+    tries = tries + 1
+    if tries > CATCH_TRIES then
+      log(self, "warn", "spawn: could not put " .. class_name .. " in your hands")
+      return true
+    end
+    -- The game-thread call may run after this tick returns, so its result
+    -- is checked on the next tick.
+    self.ue:in_game_thread(function()
+      local ok, r = pcall(self.catch_tick, self, class_name, before)
+      if not ok then log(self, "warn", "spawn catch failed: " .. tostring(r)) end
+      if not ok or r then finished = true end
+    end)
+    return false
+  end)
+end
+
 function Actions:spawn(item)
   if type(item) ~= "table" then return "no item" end
   local cls, why = self:item_class(item)
@@ -813,7 +886,10 @@ function Actions:spawn(item)
   -- they go straight into your hands through the controller's cheat RPC.
   if item.hand then
     local pc = self:local_controller()
+    local cn = class_name_of(item)
+    local before = cn and self.ue:find_all(cn) or {}
     if pc and self.ue:call(pc, "Server_CheatSpawnAndAttach", cls) then
+      self:catch_in_hands(item, before)
       return "Put " .. item.name .. " in your hands"
     end
     log(self, "warn", "spawn: hand spawn unavailable for " .. item.name .. "; dropping it instead")

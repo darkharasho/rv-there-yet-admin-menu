@@ -385,6 +385,34 @@ describe("items", function()
     assert.equal(0, #w.cheat.calls)
   end)
 
+  it("picks a fragile item up off the floor when the attach misses", function()
+    local a, w = world()
+    local old = { K2_GetActorLocation = function() return { X = 0, Y = 0, Z = 0 } end }
+    local fresh = { K2_GetActorLocation = function() return { X = 100, Y = 0, Z = 0 } end }
+    local far = { K2_GetActorLocation = function() return { X = 5000, Y = 0, Z = 0 } end }
+    w.ue.objects.N_C = { old }
+    w.pc.Server_CheatSpawnAndAttach = function() w.ue.objects.N_C = { old, far, fresh } end
+    w.host.PickUpActor = function(self, o) self.picked = o; self.CurrentPickUpActor = o end
+    local tick
+    a.env = { LoopAsync = function(_, fn) tick = fn end }
+    a:run("spawn", { name = "Nitro", class = "N", path = "/Game/N.N_C", hand = true })
+    assert.is_false(tick())
+    assert.equal(fresh, w.host.picked)
+    assert.is_false(tick())   -- now held: the check runs and marks it done
+    assert.is_true(tick())
+  end)
+
+  it("gives up catching after a few seconds", function()
+    local a, w = world()
+    w.pc.Server_CheatSpawnAndAttach = function() end
+    local tick
+    a.env = { LoopAsync = function(_, fn) tick = fn end }
+    a:run("spawn", { name = "Nitro", class = "N", path = "/Game/N.N_C", hand = true })
+    local stopped = false
+    for _ = 1, 20 do if tick() then stopped = true; break end end
+    assert.is_true(stopped)
+  end)
+
   it("never walks the cheat manager's item registry", function()
     local a, w = world()
     local walked = false

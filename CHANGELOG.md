@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.2.14
+
+- Nitroglycerin still landed on the floor: the game's spawn-into-hands call spawns it but
+  can miss the pickup. For the next 3 seconds the menu now looks for the new bottle near
+  you and picks it up itself. The log says "is in your hands" or "could not put".
+
 ## 0.2.13
 
 - Fix attempt: browsing Spawn item crashed a host's game. The item list no longer reads
